@@ -1,0 +1,7 @@
+.metadata/
+.classpath
+.settings/
+bin/
+Documentation/
+awsAccess.properties
+EC2 notes
