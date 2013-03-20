@@ -531,12 +531,12 @@ public class EC2Manager
 		//ec2.tagMyInstances();
 		
 		//ec2.setHosts();
-		//ec2.distributeDirectory("test/");
+		ec2.distributeDirectory("test/");
 		//ec2.createLoadBalancers();
 		
 		//ec2.cloudMetrics();
 		
-		Utils.loadXMLConfiguration("I:/RUBBOS-221.xml");
+		//Utils.loadXMLConfiguration("I:/RUBBOS-221.xml");
 	}
 
 }
