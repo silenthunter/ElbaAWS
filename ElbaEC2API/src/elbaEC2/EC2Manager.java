@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 
 import ch.ethz.ssh2.Connection;
+import ch.ethz.ssh2.SCPClient;
 import ch.ethz.ssh2.Session;
 import ch.ethz.ssh2.StreamGobbler;
 
@@ -46,6 +47,7 @@ import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
 import com.amazonaws.services.ec2.model.DescribeSpotInstanceRequestsRequest;
 import com.amazonaws.services.ec2.model.DescribeSpotInstanceRequestsResult;
+import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceState;
 import com.amazonaws.services.ec2.model.InstanceType;
@@ -69,6 +71,8 @@ public class EC2Manager
 	AmazonEC2 ec2;
 	AmazonElasticLoadBalancingClient elb;
 	AmazonCloudWatchClient cloudClient;
+	
+	String PEM_KEY = "C:\\Users\\Gdeter\\Documents\\ggkey.pem";
 	
 	public EC2Manager(AWSCredentials credentials)
 	{
@@ -98,30 +102,26 @@ public class EC2Manager
 		createReq.setGroupName(groupName);
 	}
 	
-	public void createSpotInstances()
+	public void createSpotInstances(String experimentName, String maxPrice, List<String> nodeNames)
 	{
+		//Create the request
 		RequestSpotInstancesRequest spotReq = new RequestSpotInstancesRequest();
-		spotReq.setSpotPrice(".015");
-		spotReq.setInstanceCount(11);
-		spotReq.setLaunchGroup("ggreshamElba");
+		spotReq.setSpotPrice(maxPrice);
+		spotReq.setInstanceCount(nodeNames.size());
+		spotReq.setLaunchGroup(experimentName);
 		
+		//Add the security group
 		ArrayList<String> securityGroups = new ArrayList<String>();
 		securityGroups.add("elba");
+		
+		//Describe the type of instance to launch
 		LaunchSpecification launchSpecification = new LaunchSpecification();
 		launchSpecification.setSecurityGroups(securityGroups);
 		launchSpecification.setImageId("ami-d624babf");
 		launchSpecification.setInstanceType(InstanceType.M1Small);
-		
 		spotReq.setLaunchSpecification(launchSpecification);
 		
-		//Kill the request in 3 hours
-		/*Date now = new Date();
-		Calendar cal = new GregorianCalendar();
-		cal.setTime(now);
-		cal.add(Calendar.HOUR, 2);
-		Date validUntil = cal.getTime();
-		spotReq.setValidUntil(validUntil);*/
-		
+		//Launch the instances
 		RequestSpotInstancesResult reqResult = ec2.requestSpotInstances(spotReq);
 		
 		List<SpotInstanceRequest> spotInstanceRequest = reqResult.getSpotInstanceRequests();
@@ -153,7 +153,7 @@ public class EC2Manager
 				
 				for(SpotInstanceRequest req : instanceRequests)
 				{
-					if(req.getState().equals("open"))
+					if(req.getState().equals("open") || (req.getState().equals("active") && !req.getStatus().getCode().equals("fulfilled")))
 					{
 						stillOpen = true;
 						break;
@@ -182,9 +182,9 @@ public class EC2Manager
 			ArrayList<String> resources = new ArrayList<String>();
 			resources.add(launchIds.get(i - 1));
 			
-			tags.add(new Tag("ExperimentName", "Elba"));
-			tags.add(new Tag("NodeNum", "node" + i));
-			tags.add(new Tag("Name", "node" + i));
+			tags.add(new Tag("ExperimentName", experimentName));
+			tags.add(new Tag("NodeNum", nodeNames.get(i)));
+			tags.add(new Tag("Name", nodeNames.get(i)));
 			CreateTagsRequest tagsReq = new CreateTagsRequest();
 			tagsReq.setTags(tags);
 			tagsReq.setResources(resources);
@@ -207,7 +207,7 @@ public class EC2Manager
 		}
 	}
 	
-	public void tagMyInstances()
+	public void tagMyInstances(String experimentName, List<String> nodeNames)
 	{
 		DescribeInstancesResult instRes = ec2.describeInstances();
 		
@@ -232,9 +232,9 @@ public class EC2Manager
 			ArrayList<String> resources = new ArrayList<String>();
 			resources.add(ids.get(i - 1));
 			
-			tags.add(new Tag("ExperimentName", "Elba"));
-			tags.add(new Tag("NodeNum", "node" + i));
-			tags.add(new Tag("Name", "node" + i));
+			tags.add(new Tag("ExperimentName", experimentName));
+			tags.add(new Tag("NodeNum", nodeNames.get(i - 1)));
+			tags.add(new Tag("Name", nodeNames.get(i - 1)));
 			CreateTagsRequest tagsReq = new CreateTagsRequest();
 			tagsReq.setTags(tags);
 			tagsReq.setResources(resources);
@@ -301,24 +301,12 @@ public class EC2Manager
 				command += "' | sudo tee /etc/hosts;";
 				command += "echo -e \"Host *\\n\\tStrictHostKeyChecking no\" > .ssh/config;";
 				command += "chmod 700 .ssh/config;";
-				//command += "rm test/ -rf;";
-				//command += "rm exper.tar;";
-				//; echo '' > ~/.ssh/known_hosts;";
-				/*command += "echo ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAlbwi847yEFNuc8D+zvES5WL" +
-						"pfPPOdydQSaDKi1bvUCR09tGjnWeeB0tu0V7wLqSD8/h/qoIdxt7YnXTG8jUV8" +
-						"GRO1tAecHdfF7uDv4J0A6HxH2HJnCxVqmVleEel6B1vRqVuDeTsimKmtGXlRQY" +
-						"GFeN0dv8ZMw8umAbl9cQP+mZCc3ycSBwhYtY9CebHmlSxAcw5YGsexMFPrAau1" +
-						"D12CH3i3OfViEHXcd2q5ZPyTkrDpAjPhFiezr2+wcxrvyJL/9U7Ehojp0sArh0" +
-						"jFhMncFtUb4vk5lRN2qvmTWLVgNx46S2beC/rb5jcyXkNPpHHstibAa2Hp0i1" +
-						"1+KIfAwZSw== ec2-user >> ~/.ssh/authorized_keys";*/
 					
 				sess.execCommand(command);
 				
 				InputStream stdout = new StreamGobbler(sess.getStdout());
 
 				BufferedReader br = new BufferedReader(new InputStreamReader(stdout));
-
-				System.out.println("Here is some information about the remote host:");
 
 				while (true)
 				{
@@ -521,22 +509,116 @@ public class EC2Manager
 		}
 	}
 	
+	private String getNode(String nodeName, String experimentName)
+	{
+		//Find the specified node
+		DescribeInstancesRequest describeReq = new DescribeInstancesRequest();
+		Filter nameFilter = new Filter("tag:Name").withValues(nodeName);
+		Filter experFilter = new Filter("tag:ExperimentName").withValues(experimentName);
+		ArrayList<Filter> filters = new ArrayList<Filter>();
+		filters.add(nameFilter);
+		filters.add(experFilter);
+		describeReq.setFilters(filters);
+		
+		DescribeInstancesResult describeRes = ec2.describeInstances(describeReq);
+		
+		//There should be only one instance if everything went right
+		String hostname = null;
+		for(Reservation resv : describeRes.getReservations())
+		{
+			for(Instance inst : resv.getInstances())
+			{
+				hostname = inst.getPublicDnsName();
+			}
+		}
+		
+		return hostname;
+	}
+	
+	public void copyFileToNode(String file, String nodeName, String experimentName)
+	{
+		String hostname = getNode(nodeName, experimentName);
+		
+		//No node found
+		if(hostname == null)
+			return;
+		//Upload the file
+		try {
+			Connection conn = new Connection(hostname);
+			conn.connect();
+			conn.authenticateWithPublicKey("ec2-user", new File(PEM_KEY), "");
+			SCPClient scpClient = new SCPClient(conn);
+			scpClient.put(file, "~/");
+			
+			conn.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public void runRemoteCommand(String nodeName, String experimentName, String command)
+	{
+		String hostname = getNode(nodeName, experimentName);
+		if(hostname == null)
+			return;
+		
+		try
+		{
+			Connection conn = new Connection(hostname);
+			conn.connect();
+			conn.authenticateWithPublicKey("ec2-user", new File(PEM_KEY), "");
+
+			Session sess = conn.openSession();
+			sess.execCommand(command);
+			
+			//Print the command's output
+			InputStream stdout = new StreamGobbler(sess.getStdout());
+
+			BufferedReader br = new BufferedReader(new InputStreamReader(stdout));
+
+			System.out.println("Here is some information about the remote host:");
+
+			while (true)
+			{
+				String line = br.readLine();
+				if (line == null)
+					break;
+				System.out.println(line);
+			}
+			
+			br.close();
+			
+		} catch(IOException e)
+		{
+			e.printStackTrace();
+		}
+	}
+	
 	public static void main(String[] args)
 	{
 		AWSCredentials cred = Utils.getCredentials("awsAccess.properties");
 		EC2Manager ec2 = new EC2Manager(cred);
 		//ec2.createSecurityGroup("");
 		//ec2.getSpotInstances();
-		//ec2.createSpotInstances();
-		//ec2.tagMyInstances();
+		String experimentName = "ElbaTest";
+		String maxPrice = ".015";
+		ArrayList<String> names = new ArrayList<String>();
+		for(int i = 1; i <= 11; i++)
+			names.add("node" + i);
 		
-		//ec2.setHosts();
+		//ec2.createSpotInstances(experimentName, maxPrice, names);
+		//ec2.tagMyInstances(experimentName, names);
+		
+		ec2.setHosts();
 		ec2.distributeDirectory("test/");
 		//ec2.createLoadBalancers();
 		
 		//ec2.cloudMetrics();
 		
 		//Utils.loadXMLConfiguration("I:/RUBBOS-221.xml");
+		//ec2.copyFileToNode("I:/EC221.gz", "node1", experimentName);
+		//ec2.runRemoteCommand("node1", experimentName, "tar xvf EC221.gz;mkdir test/rubbosMulini6/output -p");
 	}
 
 }

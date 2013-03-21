@@ -1,5 +1,7 @@
 package elbaEC2;
 
+import java.io.IOException;
+
 import javax.servlet.http.HttpServlet;
 
 import org.eclipse.jetty.server.Server;
@@ -16,9 +18,11 @@ public class SNSListener
 {
 	AmazonSNSClient client;
 	Server jettyServer;
+	String identity;
 	
-	public SNSListener(AWSCredentials cred)
+	public SNSListener(AWSCredentials cred, String identity)
 	{
+		this.identity = identity;
 		client = new AmazonSNSClient(cred);
 		jettyServer = new Server(8080);
 		
@@ -61,15 +65,33 @@ public class SNSListener
 		client.confirmSubscription(confirmSubscriptionRequest);
 	}
 	
+	/**
+	 * Checks to see if this is the destination of the message, and then runs the attached command
+	 * @param subject
+	 * @param message
+	 */
 	protected void messageReceived(String subject, String message)
 	{
-		
+		//This message is for this receiver
+		if(subject.equals(identity))
+		{
+			try {
+				Runtime.getRuntime().exec(message, null);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
 	}
 	
 	public static void main(String[] args)
 	{
 		AWSCredentials cred = Utils.getCredentials("awsAccess.properties");
-		SNSListener listener = new SNSListener(cred);
+		
+		/*SNSManager sns = new SNSManager(cred);
+		sns.createNewTopic("test");
+		sns.deleteTopic("test");*/
+		SNSListener listener = new SNSListener(cred, args[0]);
 		listener.init();
 		
 		try {
