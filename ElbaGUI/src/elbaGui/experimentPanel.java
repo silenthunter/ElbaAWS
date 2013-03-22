@@ -20,9 +20,12 @@ import javax.swing.JTextField;
 import javax.swing.JTree;
 import javax.swing.JButton;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.event.TreeModelEvent;
+import javax.swing.event.TreeModelListener;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeModel;
+import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
 import java.awt.GridLayout;
@@ -30,7 +33,7 @@ import java.util.List;
 import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
 
-public class experimentPanel extends JPanel
+public class experimentPanel extends JPanel implements TreeModelListener
 {
 	
 	Experiment experiment;
@@ -142,6 +145,8 @@ public class experimentPanel extends JPanel
 	private void addParams(Params params)
 	{
 		JTree paramTree = new JTree();
+		paramTree.setEditable(true);
+		
 		JScrollPane scrollPane = new JScrollPane(paramTree);
 		scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 		tabbedPane.addTab("Env", scrollPane);
@@ -149,11 +154,38 @@ public class experimentPanel extends JPanel
 		DefaultMutableTreeNode root = new DefaultMutableTreeNode();
 		for(Param param : params.env)
 		{
-			DefaultMutableTreeNode newChild = new DefaultMutableTreeNode(param);
+			DefaultMutableTreeNode newChild = new DefaultMutableTreeNode(param.name);
 			root.add(newChild);
+			
+			DefaultMutableTreeNode valueChild = new DefaultMutableTreeNode(param.value);
+			newChild.add(valueChild);
 		}
+		DefaultTreeModel treeModel = new DefaultTreeModel(root);
+		treeModel.addTreeModelListener(this);
+		paramTree.setModel(treeModel);
+	}
+
+	@Override
+	public void treeNodesChanged(TreeModelEvent arg0) {
+		DefaultMutableTreeNode[] children = (DefaultMutableTreeNode[])arg0.getChildren();
+	}
+
+	@Override
+	public void treeNodesInserted(TreeModelEvent arg0) {
+		// TODO Auto-generated method stub
 		
-		paramTree.setModel(new DefaultTreeModel(root));
+	}
+
+	@Override
+	public void treeNodesRemoved(TreeModelEvent arg0) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void treeStructureChanged(TreeModelEvent arg0) {
+		// TODO Auto-generated method stub
+		
 	}
 
 }

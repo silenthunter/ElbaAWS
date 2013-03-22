@@ -53,10 +53,10 @@ public class ConfigurationFile
 	public static class Param
 	{
 		@XmlAttribute
-		String name;
+		public String name;
 		
 		@XmlAttribute
-		String value;
+		public String value;
 		
 		@Override
 		public String toString()
