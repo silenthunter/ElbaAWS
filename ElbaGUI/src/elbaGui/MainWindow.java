@@ -1,7 +1,9 @@
 package elbaGui;
 
+import java.awt.Component;
 import java.awt.EventQueue;
 
+import javax.swing.DefaultListModel;
 import javax.swing.JFrame;
 import javax.swing.JMenuBar;
 import javax.swing.JList;
@@ -15,6 +17,14 @@ import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 
 import elbaEC2.experiments.Experiment;
+import javax.swing.ListSelectionModel;
+import javax.swing.AbstractListModel;
+import java.awt.Dimension;
+import java.awt.GridLayout;
+import javax.swing.JLabel;
+import java.awt.GridBagLayout;
+import java.awt.GridBagConstraints;
+import java.awt.Insets;
 
 public class MainWindow implements MainWindowInterface{
 
@@ -24,8 +34,6 @@ public class MainWindow implements MainWindowInterface{
 	 * Launch the application.
 	 */
 	public static void main(String[] args) {
-		Experiment.loadFromXML("I:/RUBBOS-221.xml");
-		
 		EventQueue.invokeLater(new Runnable() {
 			public void run() {
 				try {
@@ -51,6 +59,12 @@ public class MainWindow implements MainWindowInterface{
 	public MainWindow() {
 		initialize();
 		
+		Experiment exp = Experiment.loadFromXML("I:/RUBBOS-221.xml");
+		
+		DefaultListModel<String> experimentModel = new DefaultListModel<String>();
+		experimentModel.addElement("Exper1");
+		experimentPanel expPanel = new experimentPanel(exp);
+		experimentInfo.add(expPanel);
 	}
 
 	/**
@@ -76,7 +90,10 @@ public class MainWindow implements MainWindowInterface{
 		mntmExit = new JMenuItem("Exit");
 		mnFile.add(mntmExit);
 		
-		experimentList = new JList();
+		experimentList = new JList<String>();
+		experimentList.setBounds(10, 11, 100, 445);
+		experimentList.setPreferredSize(new Dimension(100, 500));
+		experimentList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		
 		experimentList.addListSelectionListener(new ListSelectionListener() {
 			public void valueChanged(ListSelectionEvent arg0)
@@ -84,13 +101,15 @@ public class MainWindow implements MainWindowInterface{
 				callback.listSelectionChanged();
 			}
 		});
-		frame.getContentPane().add(experimentList, BorderLayout.WEST);
+		frame.getContentPane().setLayout(null);
+		frame.getContentPane().add(experimentList);
 		
 		experimentInfo = new JPanel();
-		frame.getContentPane().add(experimentInfo, BorderLayout.CENTER);
+		experimentInfo.setBounds(158, 11, 463, 445);
+		frame.getContentPane().add(experimentInfo);
 	}
 	
-	private JList experimentList;
+	private JList<String> experimentList;
 	private JPanel experimentInfo;
 	private JMenu mnFile;
 	private JMenuItem mntmReloadExperiments;

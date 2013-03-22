@@ -26,6 +26,7 @@ import ch.ethz.ssh2.StreamGobbler;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.services.autoscaling.model.DescribeTagsRequest;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClient;
 import com.amazonaws.services.cloudwatch.model.Datapoint;
 import com.amazonaws.services.cloudwatch.model.Dimension;
@@ -42,11 +43,13 @@ import com.amazonaws.services.ec2.model.AvailabilityZone;
 import com.amazonaws.services.ec2.model.CreateSecurityGroupRequest;
 import com.amazonaws.services.ec2.model.CreateTagsRequest;
 import com.amazonaws.services.ec2.model.DescribeAvailabilityZonesResult;
+import com.amazonaws.services.ec2.model.DescribeInstanceAttributeRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
 import com.amazonaws.services.ec2.model.DescribeSpotInstanceRequestsRequest;
 import com.amazonaws.services.ec2.model.DescribeSpotInstanceRequestsResult;
+import com.amazonaws.services.ec2.model.DescribeTagsResult;
 import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceState;
@@ -58,6 +61,8 @@ import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.SpotInstanceRequest;
 import com.amazonaws.services.ec2.model.Tag;
+import com.amazonaws.services.ec2.model.TagDescription;
+import com.amazonaws.services.ec2.model.transform.DescribeInstanceAttributeRequestMarshaller;
 import com.amazonaws.services.elasticloadbalancing.AmazonElasticLoadBalancingClient;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerRequest;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerResult;
@@ -595,6 +600,28 @@ public class EC2Manager
 		}
 	}
 	
+	/**
+	 * Find all of the experiments running on nodes
+	 * @return An arraylist containing the experiment names
+	 */
+	public ArrayList<String> getRunningExperiments()
+	{
+		ArrayList<String> retn = new ArrayList<String>();
+		
+		DescribeTagsResult tagResult = ec2.describeTags();
+		List<TagDescription> tags = tagResult.getTags();
+		
+		//Add all unique experiments
+		for(TagDescription tag : tags)
+		{
+			if(tag.getKey().equals("ExperimentName") && retn.contains(tag.getValue()))
+			retn.add(tag.getValue());
+		}
+		
+		
+		return retn;
+	}
+	
 	public static void main(String[] args)
 	{
 		AWSCredentials cred = Utils.getCredentials("awsAccess.properties");
@@ -610,8 +637,9 @@ public class EC2Manager
 		//ec2.createSpotInstances(experimentName, maxPrice, names);
 		//ec2.tagMyInstances(experimentName, names);
 		
-		ec2.setHosts();
-		ec2.distributeDirectory("test/");
+		ec2.getRunningExperiments();
+		//ec2.setHosts();
+		//ec2.distributeDirectory("test/");
 		//ec2.createLoadBalancers();
 		
 		//ec2.cloudMetrics();

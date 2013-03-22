@@ -17,11 +17,16 @@ public class Instance
 	@XmlElement
 	String target;
 	
-	//@XmlElementWrapper(name="instance")
 	@XmlElement(name="action")
-	List<Action> actions;
+	public List<Action> actions;
 	
-	static class Action
+	@Override
+	public String toString()
+	{
+		return name + " (" + target + ")";
+	}
+	
+	public static class Action
 	{
 		@XmlAttribute
 		String type;
@@ -31,5 +36,10 @@ public class Instance
 		
 		@XmlAttribute
 		String template;
+		
+		@Override
+		public String toString() {
+			return "type=" + type + " seq=" + seq + " template=" + template;
+		}
 	}
 }
