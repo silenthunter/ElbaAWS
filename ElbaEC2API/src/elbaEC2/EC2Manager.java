@@ -676,11 +676,15 @@ public class EC2Manager
 		int idx = output.indexOf('/');
 		String folder = output.substring(0, idx);
 		
+		//TODO: Find through API calls
+		String loadBalancer = "HTTPDbalancer-76613802.us-east-1.elb.amazonaws.com";
+		
 		ec2.runRemoteCommand("node1", experimentName, "mv -f " + folder + "/* test/rubbosMulini6/output/; rmdir " + folder + ";" +
-				"mv rubbos_files.tar test/; mkdir test/apache_files; mv rubbos_html test/apache_files;" + //Move the rubbos files
+				"mv rubbos_files.tar test/; mkdir test/apache_files; mv rubbos_html.tar test/apache_files;" + //Move the rubbos files
 				"cd test; tar xvf rubbos_files.tar; rm rubbos_files.tar; cp rubbosMulini6/output/*_conf . -R;" +
 				" cd apache_files; tar xvf rubbos_html.tar; rm rubbos_html.tar;" +
-				"cd ~/test/rubbosMulini6/output/scripts; rm CONTROL_emu*; sed -i 's/sleep 15/sleep 150/g' CONTROL_rubbos*;");
+				"cd ~/test/rubbosMulini6/output/; sed -i 's/^httpd_hostname.*$/httpd_hostname = " + loadBalancer + "/g' rubbos_conf/*; " +
+				"cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15/sleep 150/g' CONTROL_rubbos*;");
 		
 		ec2.distributeDirectory("test/");
 		
