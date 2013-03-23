@@ -70,6 +70,8 @@ import com.amazonaws.services.elasticloadbalancing.model.DescribeLoadBalancersRe
 import com.amazonaws.services.elasticloadbalancing.model.Listener;
 import com.amazonaws.services.elasticloadbalancing.model.RegisterInstancesWithLoadBalancerRequest;
 
+import elbaEC2.experiments.Experiment;
+
 public class EC2Manager
 {
 	AWSCredentials credentials;
@@ -122,7 +124,7 @@ public class EC2Manager
 		//Describe the type of instance to launch
 		LaunchSpecification launchSpecification = new LaunchSpecification();
 		launchSpecification.setSecurityGroups(securityGroups);
-		launchSpecification.setImageId("ami-d624babf");
+		launchSpecification.setImageId("ami-f8128a91");
 		launchSpecification.setInstanceType(InstanceType.M1Small);
 		spotReq.setLaunchSpecification(launchSpecification);
 		
@@ -155,9 +157,16 @@ public class EC2Manager
 			{
 				DescribeSpotInstanceRequestsResult requestResults = ec2.describeSpotInstanceRequests(requestRequest);
 				List<SpotInstanceRequest> instanceRequests = requestResults.getSpotInstanceRequests();
+				int instCount = 0;
 				
 				for(SpotInstanceRequest req : instanceRequests)
 				{
+					if(spotIds.contains(req.getInstanceId())) instCount++;
+					
+					//See if this isn't one of our spot instances
+					if(req.getLaunchGroup() == null || !req.getLaunchGroup().equals(experimentName))
+							continue;
+					
 					if(req.getState().equals("open") || (req.getState().equals("active") && !req.getStatus().getCode().equals("fulfilled")))
 					{
 						stillOpen = true;
@@ -166,8 +175,13 @@ public class EC2Manager
 					
 					launchIds.add(req.getInstanceId());
 				}
+				
+				//The requests haven't all been registered on AWS
+				if(instCount != spotIds.size())
+					stillOpen = true;
 			}
 			catch(AmazonServiceException  e){stillOpen = true;}
+			
 			
 			//Delay next check
 			if(stillOpen)
@@ -188,7 +202,7 @@ public class EC2Manager
 			resources.add(launchIds.get(i - 1));
 			
 			tags.add(new Tag("ExperimentName", experimentName));
-			tags.add(new Tag("NodeNum", nodeNames.get(i)));
+			tags.add(new Tag("NodeName", nodeNames.get(i)));
 			tags.add(new Tag("Name", nodeNames.get(i)));
 			CreateTagsRequest tagsReq = new CreateTagsRequest();
 			tagsReq.setTags(tags);
@@ -223,7 +237,7 @@ public class EC2Manager
 		{
 			for(Instance inst : rs.getInstances())
 			{
-				if(inst.getImageId().equals("ami-d624babf") && inst.getState().getName().equals("running"))
+				if(inst.getImageId().equals("ami-f8128a91") && inst.getState().getName().equals("running"))
 				{
 					ids.add(inst.getInstanceId());
 				}
@@ -238,7 +252,7 @@ public class EC2Manager
 			resources.add(ids.get(i - 1));
 			
 			tags.add(new Tag("ExperimentName", experimentName));
-			tags.add(new Tag("NodeNum", nodeNames.get(i - 1)));
+			tags.add(new Tag("NodeName", nodeNames.get(i - 1)));
 			tags.add(new Tag("Name", nodeNames.get(i - 1)));
 			CreateTagsRequest tagsReq = new CreateTagsRequest();
 			tagsReq.setTags(tags);
@@ -264,7 +278,7 @@ public class EC2Manager
 		{
 			for(Instance inst : rs.getInstances())
 			{
-				if(inst.getImageId().equals("ami-d624babf") && inst.getState().getName().equals("running"))
+				if(inst.getImageId().equals("ami-f8128a91") && inst.getState().getName().equals("running"))
 				{
 					String addr = inst.getPublicDnsName();
 					List<Tag> tags = inst.getTags();
@@ -306,6 +320,7 @@ public class EC2Manager
 				command += "' | sudo tee /etc/hosts;";
 				command += "echo -e \"Host *\\n\\tStrictHostKeyChecking no\" > .ssh/config;";
 				command += "chmod 700 .ssh/config;";
+				command += "echo '' > .ssh/known_hosts";
 					
 				sess.execCommand(command);
 				
@@ -348,7 +363,7 @@ public class EC2Manager
 		{
 			for(Instance inst : rs.getInstances())
 			{
-				if(inst.getImageId().equals("ami-d624babf") && inst.getState().getName().equals("running"))
+				if(inst.getImageId().equals("ami-f8128a91") && inst.getState().getName().equals("running"))
 				{
 					String addr = inst.getPublicDnsName();
 					List<Tag> tags = inst.getTags();
@@ -562,11 +577,12 @@ public class EC2Manager
 		}
 	}
 	
-	public void runRemoteCommand(String nodeName, String experimentName, String command)
+	public String runRemoteCommand(String nodeName, String experimentName, String command)
 	{
+		String retn = "";
 		String hostname = getNode(nodeName, experimentName);
 		if(hostname == null)
-			return;
+			return retn;
 		
 		try
 		{
@@ -582,14 +598,13 @@ public class EC2Manager
 
 			BufferedReader br = new BufferedReader(new InputStreamReader(stdout));
 
-			System.out.println("Here is some information about the remote host:");
-
 			while (true)
 			{
 				String line = br.readLine();
 				if (line == null)
 					break;
-				System.out.println(line);
+
+				retn += line + "\n";
 			}
 			
 			br.close();
@@ -598,6 +613,8 @@ public class EC2Manager
 		{
 			e.printStackTrace();
 		}
+		
+		return retn;
 	}
 	
 	/**
@@ -622,6 +639,11 @@ public class EC2Manager
 		return retn;
 	}
 	
+	public void setupDirectories()
+	{
+		
+	}
+	
 	public static void main(String[] args)
 	{
 		AWSCredentials cred = Utils.getCredentials("awsAccess.properties");
@@ -637,16 +659,32 @@ public class EC2Manager
 		//ec2.createSpotInstances(experimentName, maxPrice, names);
 		//ec2.tagMyInstances(experimentName, names);
 		
-		ec2.getRunningExperiments();
-		//ec2.setHosts();
-		//ec2.distributeDirectory("test/");
+		//ec2.getRunningExperiments();
+		ec2.setHosts();
 		//ec2.createLoadBalancers();
 		
 		//ec2.cloudMetrics();
 		
+		Experiment exp = Experiment.loadFromXML("I:/RUBBOS-221.xml");
 		//Utils.loadXMLConfiguration("I:/RUBBOS-221.xml");
-		//ec2.copyFileToNode("I:/EC221.gz", "node1", experimentName);
-		//ec2.runRemoteCommand("node1", experimentName, "tar xvf EC221.gz;mkdir test/rubbosMulini6/output -p");
+		ec2.copyFileToNode("I:/EC221.tar.gz", "node1", experimentName);
+		ec2.copyFileToNode("I:/rubbos_files.tar", "node1", experimentName);
+		ec2.copyFileToNode("I:/rubbos_html.tar", "node1", experimentName);
+		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf EC221.tar.gz;mkdir test/rubbosMulini6/output -p");
+		
+		//Get the folder's name
+		int idx = output.indexOf('/');
+		String folder = output.substring(0, idx);
+		
+		ec2.runRemoteCommand("node1", experimentName, "mv -f " + folder + "/* test/rubbosMulini6/output/; rmdir " + folder + ";" +
+				"mv rubbos_files.tar test/; mkdir test/apache_files; mv rubbos_html test/apache_files;" + //Move the rubbos files
+				"cd test; tar xvf rubbos_files.tar; rm rubbos_files.tar; cp rubbosMulini6/output/*_conf . -R;" +
+				" cd apache_files; tar xvf rubbos_html.tar; rm rubbos_html.tar;" +
+				"cd ~/test/rubbosMulini6/output/scripts; rm CONTROL_emu*; sed -i 's/sleep 15/sleep 150/g' CONTROL_rubbos*;");
+		
+		ec2.distributeDirectory("test/");
+		
+		ec2.runRemoteCommand("node1", experimentName, "nohup bash -c /home/ec2-user/test/rubbosMulini6/output/scripts/run.sh &> logFile 0</dev/null &");
 	}
 
 }
