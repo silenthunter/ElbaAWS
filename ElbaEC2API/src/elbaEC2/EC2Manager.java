@@ -66,10 +66,13 @@ import com.amazonaws.services.ec2.model.transform.DescribeInstanceAttributeReque
 import com.amazonaws.services.elasticloadbalancing.AmazonElasticLoadBalancingClient;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerRequest;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerResult;
+import com.amazonaws.services.elasticloadbalancing.model.DeregisterInstancesFromLoadBalancerRequest;
 import com.amazonaws.services.elasticloadbalancing.model.DescribeLoadBalancersResult;
 import com.amazonaws.services.elasticloadbalancing.model.Listener;
+import com.amazonaws.services.elasticloadbalancing.model.LoadBalancerDescription;
 import com.amazonaws.services.elasticloadbalancing.model.RegisterInstancesWithLoadBalancerRequest;
 
+import elbaEC2.experiments.ConfigurationFile;
 import elbaEC2.experiments.Experiment;
 
 public class EC2Manager
@@ -137,7 +140,7 @@ public class EC2Manager
 		ArrayList<String> spotIds = new ArrayList<String>();
 		
 		for(SpotInstanceRequest request : spotInstanceRequest)
-			spotIds.add(request.getInstanceId());
+			spotIds.add(request.getSpotInstanceRequestId());
 		
 		boolean stillOpen = false;
 		
@@ -157,11 +160,13 @@ public class EC2Manager
 			{
 				DescribeSpotInstanceRequestsResult requestResults = ec2.describeSpotInstanceRequests(requestRequest);
 				List<SpotInstanceRequest> instanceRequests = requestResults.getSpotInstanceRequests();
-				int instCount = 0;
 				
 				for(SpotInstanceRequest req : instanceRequests)
 				{
-					if(spotIds.contains(req.getInstanceId())) instCount++;
+					
+					//Skip if not one of ours
+					if(!spotIds.contains(req.getSpotInstanceRequestId()))
+						continue;
 					
 					//See if this isn't one of our spot instances
 					if(req.getLaunchGroup() == null || !req.getLaunchGroup().equals(experimentName))
@@ -175,10 +180,6 @@ public class EC2Manager
 					
 					launchIds.add(req.getInstanceId());
 				}
-				
-				//The requests haven't all been registered on AWS
-				if(instCount != spotIds.size())
-					stillOpen = true;
 			}
 			catch(AmazonServiceException  e){stillOpen = true;}
 			
@@ -194,12 +195,18 @@ public class EC2Manager
 			
 		}while(stillOpen);
 		
-		for(int i = 1; i <= launchIds.size(); i++)
+		//Ask for the results again
+		DescribeSpotInstanceRequestsRequest spotRequest = new DescribeSpotInstanceRequestsRequest();
+		spotRequest.setSpotInstanceRequestIds(spotIds);
+		DescribeSpotInstanceRequestsResult spotInstanceRequests = ec2.describeSpotInstanceRequests(spotRequest);
+		List<SpotInstanceRequest> instances = spotInstanceRequests.getSpotInstanceRequests();
+		
+		for(int i = 0; i < instances.size(); i++)
 		{
 			//Tag the nodes
 			ArrayList<Tag> tags = new ArrayList<Tag>();
 			ArrayList<String> resources = new ArrayList<String>();
-			resources.add(launchIds.get(i - 1));
+			resources.add(instances.get(i).getInstanceId());
 			
 			tags.add(new Tag("ExperimentName", experimentName));
 			tags.add(new Tag("NodeName", nodeNames.get(i)));
@@ -285,7 +292,7 @@ public class EC2Manager
 					
 					for(Tag tag : tags)
 					{
-						if(tag.getKey().equals("NodeNum"))
+						if(tag.getKey().equals("NodeName"))
 						{
 							//Add this key to the mapping
 							nodeAddrMap.put(tag.getValue(), inst.getPrivateIpAddress());
@@ -370,7 +377,7 @@ public class EC2Manager
 					
 					for(Tag tag : tags)
 					{
-						if(tag.getKey().equals("NodeNum"))
+						if(tag.getKey().equals("NodeName"))
 						{
 							//Add this key to the mapping
 							nodeAddrMap.put(tag.getValue(), inst.getPrivateIpAddress());
@@ -478,6 +485,68 @@ public class EC2Manager
 		
 		registerInstancesReq.setInstances(instances);
 		elb.registerInstancesWithLoadBalancer(registerInstancesReq);
+	}
+	
+	public void addNodesToLoadBalancer(String experimentName, List<String> nodeNames)
+	{
+		//Get the instances associated with the name
+		DescribeInstancesRequest instReq = new DescribeInstancesRequest();
+		Filter nameFilter = new Filter("tag:NodeName", nodeNames);
+		
+		ArrayList<String> experimentNameList = new ArrayList<String>();
+		experimentNameList.add(experimentName);
+		Filter experimentFilter = new Filter("tag:ExperimentName", experimentNameList);
+		
+		ArrayList<Filter> filters = new ArrayList<Filter>();
+		filters.add(nameFilter);
+		instReq.setFilters(filters);
+		
+		DescribeInstancesResult instResults = ec2.describeInstances(instReq);
+		List<Reservation> reservations = instResults.getReservations();
+		
+		//Add all the retrieved instances to a list
+		ArrayList<String> instanceIds = new  ArrayList<String>();
+		for(Reservation resv : reservations)
+		{
+			for(Instance  inst : resv.getInstances())
+			{
+				instanceIds.add(inst.getInstanceId());
+			}
+		}
+		
+		//Creates an ELB instances from the EC2 IDs
+		ArrayList<com.amazonaws.services.elasticloadbalancing.model.Instance> instances = 
+				new ArrayList<com.amazonaws.services.elasticloadbalancing.model.Instance>();
+		for(String instanceId : instanceIds)
+			instances.add(new com.amazonaws.services.elasticloadbalancing.model.Instance(instanceId));
+		
+		RegisterInstancesWithLoadBalancerRequest registerInstancesRequest = new RegisterInstancesWithLoadBalancerRequest();
+		registerInstancesRequest.setLoadBalancerName("HTTPDbalancer");
+		registerInstancesRequest.setInstances(instances);
+		
+		elb.registerInstancesWithLoadBalancer(registerInstancesRequest);
+	}
+	
+	public void clearLoadBalancer(String balancerName)
+	{
+		//Get the current load balancers
+		DescribeLoadBalancersResult loadBalancerRes = elb.describeLoadBalancers();
+		List<LoadBalancerDescription> descriptions = loadBalancerRes.getLoadBalancerDescriptions();
+		
+		for(LoadBalancerDescription description : descriptions)
+		{
+			//Find the correct balancer
+			if(description.getLoadBalancerName().equals(balancerName))
+			{
+				//Clear all instances from the ELB
+				DeregisterInstancesFromLoadBalancerRequest deregisterReq =
+						new DeregisterInstancesFromLoadBalancerRequest(balancerName, description.getInstances());
+				
+				elb.deregisterInstancesFromLoadBalancer(deregisterReq);
+			}
+				
+		}
+		
 	}
 	
 	public void cloudMetrics()
@@ -652,12 +721,28 @@ public class EC2Manager
 		//ec2.getSpotInstances();
 		String experimentName = "ElbaTest";
 		String maxPrice = ".015";
-		ArrayList<String> names = new ArrayList<String>();
-		for(int i = 1; i <= 11; i++)
-			names.add("node" + i);
 		
-		//ec2.createSpotInstances(experimentName, maxPrice, names);
+		Experiment exp = Experiment.loadFromXML("I:/RUBBOS-251.xml");
+		
+		//Read the names from the config file and load them
+		ArrayList<String> names = new ArrayList<String>();
+		for(Object instance : exp.getConfigurationFile().instances)
+		{
+			if(instance instanceof elbaEC2.experiments.Instance)
+				names.add(((elbaEC2.experiments.Instance)instance).target);
+		}
+		
+		ec2.createSpotInstances(experimentName, maxPrice, names);
 		//ec2.tagMyInstances(experimentName, names);
+		
+		//Wait 2 minutes for the instances to boot
+		try {
+			Thread.sleep(120000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
 		
 		//ec2.getRunningExperiments();
 		ec2.setHosts();
@@ -665,12 +750,18 @@ public class EC2Manager
 		
 		//ec2.cloudMetrics();
 		
-		Experiment exp = Experiment.loadFromXML("I:/RUBBOS-221.xml");
+		ec2.clearLoadBalancer("HTTPDbalancer");
+		
+		ArrayList<String> apacheNodes = new ArrayList<String>();
+		apacheNodes.add("node7");
+		apacheNodes.add("node10");
+		ec2.addNodesToLoadBalancer(experimentName, apacheNodes);
+		
 		//Utils.loadXMLConfiguration("I:/RUBBOS-221.xml");
-		ec2.copyFileToNode("I:/EC221.tar.gz", "node1", experimentName);
+		ec2.copyFileToNode("I:/EC251.tar.gz", "node1", experimentName);
 		ec2.copyFileToNode("I:/rubbos_files.tar", "node1", experimentName);
 		ec2.copyFileToNode("I:/rubbos_html.tar", "node1", experimentName);
-		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf EC221.tar.gz;mkdir test/rubbosMulini6/output -p");
+		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf EC251.tar.gz;mkdir test/rubbosMulini6/output -p");
 		
 		//Get the folder's name
 		int idx = output.indexOf('/');

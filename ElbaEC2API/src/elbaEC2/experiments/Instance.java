@@ -9,13 +9,13 @@ import javax.xml.bind.annotation.XmlElementWrapper;
 public class Instance
 {
 	@XmlAttribute
-	String name;
+	public String name;
 	
 	@XmlAttribute
-	String type;
+	public String type;
 	
 	@XmlElement
-	String target;
+	public String target;
 	
 	@XmlElement(name="action")
 	public List<Action> actions;
