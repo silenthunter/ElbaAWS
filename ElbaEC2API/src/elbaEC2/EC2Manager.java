@@ -715,6 +715,17 @@ public class EC2Manager
 	
 	public static void main(String[] args)
 	{
+		if(args.length < 3)
+		{
+			System.err.println("Program <XML File> <Rubbos Tar> <rubbos Files> <rubbos html>");
+			return;
+		}
+		
+		String xmlFile = args[0];
+		String rubbosTar = args[1];
+		String rubbosFile = args[2];
+		String rubbosHtml = args[3];
+		
 		AWSCredentials cred = Utils.getCredentials("awsAccess.properties");
 		EC2Manager ec2 = new EC2Manager(cred);
 		//ec2.createSecurityGroup("");
@@ -722,7 +733,7 @@ public class EC2Manager
 		String experimentName = "ElbaTest";
 		String maxPrice = ".015";
 		
-		Experiment exp = Experiment.loadFromXML("I:/RUBBOS-251.xml");
+		Experiment exp = Experiment.loadFromXML(xmlFile);
 		
 		//Read the names from the config file and load them
 		ArrayList<String> names = new ArrayList<String>();
@@ -750,32 +761,36 @@ public class EC2Manager
 		
 		//ec2.cloudMetrics();
 		
-		ec2.clearLoadBalancer("HTTPDbalancer");
+		/*ec2.clearLoadBalancer("HTTPDbalancer");
 		
 		ArrayList<String> apacheNodes = new ArrayList<String>();
 		apacheNodes.add("node7");
 		apacheNodes.add("node10");
-		ec2.addNodesToLoadBalancer(experimentName, apacheNodes);
+		ec2.addNodesToLoadBalancer(experimentName, apacheNodes);*/
 		
-		//Utils.loadXMLConfiguration("I:/RUBBOS-221.xml");
-		ec2.copyFileToNode("I:/EC251.tar.gz", "node1", experimentName);
-		ec2.copyFileToNode("I:/rubbos_files.tar", "node1", experimentName);
-		ec2.copyFileToNode("I:/rubbos_html.tar", "node1", experimentName);
-		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf EC251.tar.gz;mkdir test/rubbosMulini6/output -p");
+		ec2.copyFileToNode(rubbosTar, "node1", experimentName);
+		ec2.copyFileToNode(rubbosFile, "node1", experimentName);
+		ec2.copyFileToNode(rubbosHtml, "node1", experimentName);
+		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf " + rubbosTar + ";mkdir test/rubbosMulini6/output -p");
 		
 		//Get the folder's name
 		int idx = output.indexOf('/');
 		String folder = output.substring(0, idx);
 		
 		//TODO: Find through API calls
-		String loadBalancer = "HTTPDbalancer-76613802.us-east-1.elb.amazonaws.com";
+		//String loadBalancer = "HTTPDbalancer-76613802.us-east-1.elb.amazonaws.com";
+		String loadBalancer = null;
 		
-		ec2.runRemoteCommand("node1", experimentName, "mv -f " + folder + "/* test/rubbosMulini6/output/; rmdir " + folder + ";" +
-				"mv rubbos_files.tar test/; mkdir test/apache_files; mv rubbos_html.tar test/apache_files;" + //Move the rubbos files
-				"cd test; tar xvf rubbos_files.tar; rm rubbos_files.tar; cp rubbosMulini6/output/*_conf . -R;" +
-				" cd apache_files; tar xvf rubbos_html.tar; rm rubbos_html.tar;" +
-				"cd ~/test/rubbosMulini6/output/; sed -i 's/^httpd_hostname.*$/httpd_hostname = " + loadBalancer + "/g' rubbos_conf/*; " +
-				"cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15/sleep 150/g' CONTROL_rubbos*;");
+		String command = "mv -f " + folder + "/* test/rubbosMulini6/output/; rmdir " + folder + ";" +
+				"mv " + rubbosFile + " test/; mkdir test/apache_files; mv " + rubbosHtml + " test/apache_files;" + //Move the rubbos files
+				"cd test; tar xvf " + rubbosFile + "; rm " + rubbosFile + "; cp rubbosMulini6/output/*_conf . -R;" +
+				" cd apache_files; tar xvf " + rubbosHtml + "; rm " + rubbosHtml + ";" +
+				"cd ~/test/rubbosMulini6/output/; ";
+		if(loadBalancer != null)
+			command += "sed -i 's/^httpd_hostname.*$/httpd_hostname = " + loadBalancer + "/g' rubbos_conf/*; ";
+		command += "cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15/sleep 150/g' CONTROL_rubbos*;";
+				
+		ec2.runRemoteCommand("node1", experimentName, command);
 		
 		ec2.distributeDirectory("test/");
 		
