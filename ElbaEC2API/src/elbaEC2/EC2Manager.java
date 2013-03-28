@@ -437,36 +437,14 @@ public class EC2Manager
 		}
 	}
 	
-	public void createLoadBalancers()
-	{
-		//Get running instances
-		ArrayList<com.amazonaws.services.elasticloadbalancing.model.Instance> instances = 
-				new ArrayList<com.amazonaws.services.elasticloadbalancing.model.Instance>();
-		DescribeInstancesResult instanceRes = ec2.describeInstances();
-		for(Reservation reserv : instanceRes.getReservations())
-		{
-			for(Instance inst : reserv.getInstances())
-			{
-				for(Tag tag : inst.getTags())
-				{
-					if(tag.getKey().equals("Name") && 
-							(tag.getValue().equals("node7") || tag.getValue().equals("node10")))
-					{
-						//Convert to an ELB instance
-						com.amazonaws.services.elasticloadbalancing.model.Instance elbInst =
-								new com.amazonaws.services.elasticloadbalancing.model.Instance(inst.getInstanceId());
-						instances.add(elbInst);
-					}
-				}
-			}
-		}
-		
+	public void createLoadBalancer(String balancerName, int port)
+	{		
 		//Configure the balancer
 		CreateLoadBalancerRequest balReq = new CreateLoadBalancerRequest();
-		balReq.setLoadBalancerName("HTTPDbalancer");
+		balReq.setLoadBalancerName(balancerName);
 		
 		ArrayList<Listener> listeners = new ArrayList<Listener>();
-		listeners.add(new Listener("tcp", 8000, 8000));
+		listeners.add(new Listener("tcp", port, port));
 		balReq.setListeners(listeners);
 		
 		DescribeAvailabilityZonesResult availZones = ec2.describeAvailabilityZones();
@@ -478,16 +456,9 @@ public class EC2Manager
 		
 		//Create the balancer
 		CreateLoadBalancerResult balRes = elb.createLoadBalancer(balReq);
-		
-		//Register the instances
-		RegisterInstancesWithLoadBalancerRequest registerInstancesReq = new RegisterInstancesWithLoadBalancerRequest();
-		registerInstancesReq.setLoadBalancerName("HTTPDbalancer");
-		
-		registerInstancesReq.setInstances(instances);
-		elb.registerInstancesWithLoadBalancer(registerInstancesReq);
 	}
 	
-	public void addNodesToLoadBalancer(String experimentName, List<String> nodeNames)
+	public void addNodesToLoadBalancer(String balancerName, String experimentName, List<String> nodeNames)
 	{
 		//Get the instances associated with the name
 		DescribeInstancesRequest instReq = new DescribeInstancesRequest();
@@ -521,7 +492,7 @@ public class EC2Manager
 			instances.add(new com.amazonaws.services.elasticloadbalancing.model.Instance(instanceId));
 		
 		RegisterInstancesWithLoadBalancerRequest registerInstancesRequest = new RegisterInstancesWithLoadBalancerRequest();
-		registerInstancesRequest.setLoadBalancerName("HTTPDbalancer");
+		registerInstancesRequest.setLoadBalancerName(balancerName);
 		registerInstancesRequest.setInstances(instances);
 		
 		elb.registerInstancesWithLoadBalancer(registerInstancesRequest);
@@ -538,6 +509,10 @@ public class EC2Manager
 			//Find the correct balancer
 			if(description.getLoadBalancerName().equals(balancerName))
 			{
+				//This load balancer is already empty
+				if(description.getInstances() == null || description.getInstances().size() == 0)
+					return;
+				
 				//Clear all instances from the ELB
 				DeregisterInstancesFromLoadBalancerRequest deregisterReq =
 						new DeregisterInstancesFromLoadBalancerRequest(balancerName, description.getInstances());
@@ -708,9 +683,22 @@ public class EC2Manager
 		return retn;
 	}
 	
-	public void setupDirectories()
+	public String getLoadBalancerDNS(String balancerName)
 	{
+		String dns = null;
 		
+		DescribeLoadBalancersResult balancers = elb.describeLoadBalancers();
+		List<LoadBalancerDescription> descriptions = balancers.getLoadBalancerDescriptions();
+		for(LoadBalancerDescription description : descriptions)
+		{
+			if(description.getLoadBalancerName().equals(balancerName))
+			{
+				dns = description.getDNSName();
+				break;
+			}
+		}
+		
+		return dns;
 	}
 	
 	public static void main(String[] args)
@@ -721,10 +709,14 @@ public class EC2Manager
 			return;
 		}
 		
-		String xmlFile = args[0];
-		String rubbosTar = args[1];
-		String rubbosFile = args[2];
-		String rubbosHtml = args[3];
+		String rootDir = args[0];
+		String xmlFile = args[1];
+		String rubbosTar = args[2];
+		String rubbosFile = args[3];
+		String rubbosHtml = args[4];
+		
+		//Add a trailing slash. Java likes to remove them...
+		rootDir += "\\";
 		
 		AWSCredentials cred = Utils.getCredentials("awsAccess.properties");
 		EC2Manager ec2 = new EC2Manager(cred);
@@ -733,7 +725,7 @@ public class EC2Manager
 		String experimentName = "ElbaTest";
 		String maxPrice = ".015";
 		
-		Experiment exp = Experiment.loadFromXML(xmlFile);
+		Experiment exp = Experiment.loadFromXML(rootDir + xmlFile);
 		
 		//Read the names from the config file and load them
 		ArrayList<String> names = new ArrayList<String>();
@@ -743,7 +735,7 @@ public class EC2Manager
 				names.add(((elbaEC2.experiments.Instance)instance).target);
 		}
 		
-		ec2.createSpotInstances(experimentName, maxPrice, names);
+		//ec2.createSpotInstances(experimentName, maxPrice, names);
 		//ec2.tagMyInstances(experimentName, names);
 		
 		//Wait 2 minutes for the instances to boot
@@ -757,37 +749,48 @@ public class EC2Manager
 		
 		//ec2.getRunningExperiments();
 		ec2.setHosts();
-		//ec2.createLoadBalancers();
+		ec2.createLoadBalancer("HTTPDbalancer", 8000);
+		ec2.clearLoadBalancer("HTTPDbalancer");
 		
-		//ec2.cloudMetrics();
+		ec2.createLoadBalancer("SQLbalancer", 8000);
+		ec2.clearLoadBalancer("SQLbalancer");
 		
-		/*ec2.clearLoadBalancer("HTTPDbalancer");
 		
 		ArrayList<String> apacheNodes = new ArrayList<String>();
 		apacheNodes.add("node7");
 		apacheNodes.add("node10");
-		ec2.addNodesToLoadBalancer(experimentName, apacheNodes);*/
+		ec2.addNodesToLoadBalancer("HTTPDbalancer", experimentName, apacheNodes);
 		
-		ec2.copyFileToNode(rubbosTar, "node1", experimentName);
-		ec2.copyFileToNode(rubbosFile, "node1", experimentName);
-		ec2.copyFileToNode(rubbosHtml, "node1", experimentName);
+		ArrayList<String> sqlNodes = new ArrayList<String>();
+		sqlNodes.add("node9");
+		sqlNodes.add("node12");
+		ec2.addNodesToLoadBalancer("SQLbalancer", experimentName, sqlNodes);
+		
+		ec2.copyFileToNode(rootDir + rubbosTar, "node1", experimentName);
+		ec2.copyFileToNode(rootDir + rubbosFile, "node1", experimentName);
+		ec2.copyFileToNode(rootDir + rubbosHtml, "node1", experimentName);
 		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf " + rubbosTar + ";mkdir test/rubbosMulini6/output -p");
 		
 		//Get the folder's name
 		int idx = output.indexOf('/');
 		String folder = output.substring(0, idx);
 		
-		//TODO: Find through API calls
-		//String loadBalancer = "HTTPDbalancer-76613802.us-east-1.elb.amazonaws.com";
-		String loadBalancer = null;
+		//Get the load balancers' public DNS
+		String mainSQLNode = "node9";
+		String loadBalancer = ec2.getLoadBalancerDNS("HTTPDbalancer");
+		String sqlBalancer = ec2.getLoadBalancerDNS("SQLbalancer");
 		
 		String command = "mv -f " + folder + "/* test/rubbosMulini6/output/; rmdir " + folder + ";" +
 				"mv " + rubbosFile + " test/; mkdir test/apache_files; mv " + rubbosHtml + " test/apache_files;" + //Move the rubbos files
-				"cd test; tar xvf " + rubbosFile + "; rm " + rubbosFile + "; cp rubbosMulini6/output/*_conf . -R;" +
+				"cd test; tar xvf " + rubbosFile + "; " +
+				//"rm " + rubbosFile + "; " + //Remove the old rubbos_files tar
+				"cp rubbosMulini6/output/*_conf . -R;" + //Copy the config directories to $WORKING_HOME
 				" cd apache_files; tar xvf " + rubbosHtml + "; rm " + rubbosHtml + ";" +
 				"cd ~/test/rubbosMulini6/output/; ";
 		if(loadBalancer != null)
 			command += "sed -i 's/^httpd_hostname.*$/httpd_hostname = " + loadBalancer + "/g' rubbos_conf/*; ";
+		if(sqlBalancer != null)
+			command += "sed -i 's/" + mainSQLNode + "/" + sqlBalancer + "/g' rubbos_conf/mysql.properties; ";
 		command += "cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15/sleep 150/g' CONTROL_rubbos*;";
 				
 		ec2.runRemoteCommand("node1", experimentName, command);
