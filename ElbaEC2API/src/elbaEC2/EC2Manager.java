@@ -25,6 +25,7 @@ import ch.ethz.ssh2.Session;
 import ch.ethz.ssh2.StreamGobbler;
 
 import com.amazonaws.AmazonServiceException;
+import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.services.autoscaling.model.DescribeTagsRequest;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClient;
@@ -64,13 +65,17 @@ import com.amazonaws.services.ec2.model.Tag;
 import com.amazonaws.services.ec2.model.TagDescription;
 import com.amazonaws.services.ec2.model.transform.DescribeInstanceAttributeRequestMarshaller;
 import com.amazonaws.services.elasticloadbalancing.AmazonElasticLoadBalancingClient;
+import com.amazonaws.services.elasticloadbalancing.model.ConfigureHealthCheckRequest;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerRequest;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerResult;
 import com.amazonaws.services.elasticloadbalancing.model.DeregisterInstancesFromLoadBalancerRequest;
 import com.amazonaws.services.elasticloadbalancing.model.DescribeLoadBalancersResult;
+import com.amazonaws.services.elasticloadbalancing.model.HealthCheck;
 import com.amazonaws.services.elasticloadbalancing.model.Listener;
 import com.amazonaws.services.elasticloadbalancing.model.LoadBalancerDescription;
 import com.amazonaws.services.elasticloadbalancing.model.RegisterInstancesWithLoadBalancerRequest;
+import com.amazonaws.services.route53.model.HealthCheckConfig;
+import com.amazonaws.services.route53.model.HealthCheckType;
 
 import elbaEC2.experiments.ConfigurationFile;
 import elbaEC2.experiments.Experiment;
@@ -270,11 +275,18 @@ public class EC2Manager
 		
 	}
 	
-	public void setHosts()
+	public void setHosts(String experimentName)
 	{
 		File keyfile = new File("C:\\Users\\Gdeter\\Documents\\ggkey.pem");
 	
-		DescribeInstancesResult instRes = ec2.describeInstances();
+		DescribeInstancesRequest describeRequest = new DescribeInstancesRequest();
+		ArrayList<String> experimentList = new ArrayList<String>();
+		experimentList.add(experimentName);
+		ArrayList<Filter> filters = new ArrayList<Filter>();
+		filters.add(new Filter("tag:ExperimentName", experimentList));
+		describeRequest.setFilters(filters);
+		
+		DescribeInstancesResult instRes = ec2.describeInstances(describeRequest);
 		
 		ArrayList<String> addrs = new ArrayList<String>();
 		List<Reservation> resv = instRes.getReservations();
@@ -285,6 +297,7 @@ public class EC2Manager
 		{
 			for(Instance inst : rs.getInstances())
 			{
+				//TODO: Remove AMI filter?
 				if(inst.getImageId().equals("ami-f8128a91") && inst.getState().getName().equals("running"))
 				{
 					String addr = inst.getPublicDnsName();
@@ -323,7 +336,6 @@ public class EC2Manager
 				{
 					command += nodeAddrMap.get(node) + " " + node + "\\n";
 				}
-				command += "107.22.188.112 balancer\\n";
 				command += "' | sudo tee /etc/hosts;";
 				command += "echo -e \"Host *\\n\\tStrictHostKeyChecking no\" > .ssh/config;";
 				command += "chmod 700 .ssh/config;";
@@ -437,11 +449,13 @@ public class EC2Manager
 		}
 	}
 	
-	public void createLoadBalancer(String balancerName, int port)
+	public void createLoadBalancer(String balancerName, String experimentName, int port)
 	{		
+		String fullName = experimentName + "_" + balancerName;
+		
 		//Configure the balancer
 		CreateLoadBalancerRequest balReq = new CreateLoadBalancerRequest();
-		balReq.setLoadBalancerName(balancerName);
+		balReq.setLoadBalancerName(fullName);
 		
 		ArrayList<Listener> listeners = new ArrayList<Listener>();
 		listeners.add(new Listener("tcp", port, port));
@@ -453,6 +467,20 @@ public class EC2Manager
 		for(AvailabilityZone zone : zones)
 			zonesStr.add(zone.getZoneName());
 		balReq.setAvailabilityZones(zonesStr);
+		
+		//Configure the health check
+		ConfigureHealthCheckRequest configureHealthCheckRequest = new ConfigureHealthCheckRequest();
+		configureHealthCheckRequest.setLoadBalancerName(fullName);
+		
+		HealthCheck healthCheck = new HealthCheck();
+		healthCheck.setHealthyThreshold(2);
+		healthCheck.setUnhealthyThreshold(2);
+		healthCheck.setInterval(30);
+		healthCheck.setTarget("TCP");
+		
+		configureHealthCheckRequest.setHealthCheck(healthCheck);
+		
+		elb.configureHealthCheck(configureHealthCheckRequest);
 		
 		//Create the balancer
 		CreateLoadBalancerResult balRes = elb.createLoadBalancer(balReq);
@@ -498,8 +526,10 @@ public class EC2Manager
 		elb.registerInstancesWithLoadBalancer(registerInstancesRequest);
 	}
 	
-	public void clearLoadBalancer(String balancerName)
+	public void clearLoadBalancer(String balancerName, String experimentName)
 	{
+		String fullName = experimentName + "_" + balancerName;
+		
 		//Get the current load balancers
 		DescribeLoadBalancersResult loadBalancerRes = elb.describeLoadBalancers();
 		List<LoadBalancerDescription> descriptions = loadBalancerRes.getLoadBalancerDescriptions();
@@ -507,7 +537,7 @@ public class EC2Manager
 		for(LoadBalancerDescription description : descriptions)
 		{
 			//Find the correct balancer
-			if(description.getLoadBalancerName().equals(balancerName))
+			if(description.getLoadBalancerName().equals(fullName))
 			{
 				//This load balancer is already empty
 				if(description.getInstances() == null || description.getInstances().size() == 0)
@@ -515,7 +545,7 @@ public class EC2Manager
 				
 				//Clear all instances from the ELB
 				DeregisterInstancesFromLoadBalancerRequest deregisterReq =
-						new DeregisterInstancesFromLoadBalancerRequest(balancerName, description.getInstances());
+						new DeregisterInstancesFromLoadBalancerRequest(fullName, description.getInstances());
 				
 				elb.deregisterInstancesFromLoadBalancer(deregisterReq);
 			}
@@ -683,15 +713,17 @@ public class EC2Manager
 		return retn;
 	}
 	
-	public String getLoadBalancerDNS(String balancerName)
+	public String getLoadBalancerDNS(String balancerName, String experimentName)
 	{
+		
+		String fullName = experimentName + "_" + balancerName;
 		String dns = null;
 		
 		DescribeLoadBalancersResult balancers = elb.describeLoadBalancers();
 		List<LoadBalancerDescription> descriptions = balancers.getLoadBalancerDescriptions();
 		for(LoadBalancerDescription description : descriptions)
 		{
-			if(description.getLoadBalancerName().equals(balancerName))
+			if(description.getLoadBalancerName().equals(fullName))
 			{
 				dns = description.getDNSName();
 				break;
@@ -748,12 +780,12 @@ public class EC2Manager
 		
 		
 		//ec2.getRunningExperiments();
-		ec2.setHosts();
-		ec2.createLoadBalancer("HTTPDbalancer", 8000);
-		ec2.clearLoadBalancer("HTTPDbalancer");
+		ec2.setHosts(experimentName);
+		ec2.createLoadBalancer("HTTPDbalancer", experimentName, 8000);
+		ec2.clearLoadBalancer("HTTPDbalancer", experimentName);
 		
-		ec2.createLoadBalancer("SQLbalancer", 8000);
-		ec2.clearLoadBalancer("SQLbalancer");
+		ec2.createLoadBalancer("SQLbalancer", experimentName, 3313);
+		ec2.clearLoadBalancer("SQLbalancer", experimentName);
 		
 		
 		ArrayList<String> apacheNodes = new ArrayList<String>();
@@ -777,8 +809,8 @@ public class EC2Manager
 		
 		//Get the load balancers' public DNS
 		String mainSQLNode = "node9";
-		String loadBalancer = ec2.getLoadBalancerDNS("HTTPDbalancer");
-		String sqlBalancer = ec2.getLoadBalancerDNS("SQLbalancer");
+		String loadBalancer = ec2.getLoadBalancerDNS("HTTPDbalancer", experimentName);
+		String sqlBalancer = ec2.getLoadBalancerDNS("SQLbalancer", experimentName);
 		
 		String command = "mv -f " + folder + "/* test/rubbosMulini6/output/; rmdir " + folder + ";" +
 				"mv " + rubbosFile + " test/; mkdir test/apache_files; mv " + rubbosHtml + " test/apache_files;" + //Move the rubbos files
