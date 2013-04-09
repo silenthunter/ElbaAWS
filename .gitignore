@@ -2,6 +2,7 @@
 .classpath
 .settings/
 bin/
-Documentation/
+Documentation/*
+!Documentation/Guide
 awsAccess.properties
 EC2 notes

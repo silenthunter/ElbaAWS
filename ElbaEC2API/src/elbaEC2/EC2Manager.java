@@ -89,6 +89,10 @@ public class EC2Manager
 	
 	String PEM_KEY = "C:\\Users\\Gdeter\\Documents\\ggkey.pem";
 	
+	/**
+	 * @brief Instantiates an EC2Manager object
+	 * @param credentials The AWS credentials that will be used for all AWS calls this class makes
+	 */
 	public EC2Manager(AWSCredentials credentials)
 	{
 		this.credentials = credentials;
@@ -117,6 +121,19 @@ public class EC2Manager
 		createReq.setGroupName(groupName);
 	}
 	
+	/**
+	 * @brief Creates a number of spot instances based on the size of the nodeNames list
+	 * 
+	 * Requests spot instance requests for N instances, where N is \f$nodeNames.size()\f$.
+	 * These instances are assigned AWS tags for their node names, and experiment name for 
+	 * later filtering. 
+	 * 
+	 * @param experimentName The name of the experiment
+	 * @param maxPrice A string containing the maximum value to pay for an instance hour. Ex: ".015"
+	 * @param nodeNames A list of the names for each node.
+	 * 
+	 * @remark This call will block until all nodes are acquired.
+	 */
 	public void createSpotInstances(String experimentName, String maxPrice, List<String> nodeNames)
 	{
 		//Create the request
@@ -225,19 +242,43 @@ public class EC2Manager
 		
 	}
 	
-	public void getSpotInstances()
+	/**
+	 * @brief Retrieves a list of instances that exist in a given experiment
+	 * @param experimentName The name of the experiment
+	 * @return A list of EC2 Instances
+	 */
+	public ArrayList<Instance> getSpotInstances(String experimentName)
 	{
-		DescribeInstancesResult res = ec2.describeInstances();
+		//Filter for just this experiment
+		DescribeInstancesRequest describeReq = new DescribeInstancesRequest();
+		ArrayList<String> experiments = new ArrayList<String>();
+		experiments.add(experimentName);
+		ArrayList<Filter> filters = new ArrayList<Filter>();
+		filters.add(new Filter("tag:ExperimentName", experiments));
 		
+		DescribeInstancesResult res = ec2.describeInstances(describeReq);
+		
+		ArrayList<Instance> instances = new ArrayList<Instance>();
 		for(Reservation rsv : res.getReservations())
 		{
 			for(Instance inst : rsv.getInstances())
 			{
-				System.out.println(inst.getImageId());
+				instances.add(inst);
 			}
 		}
+		
+		return instances;
 	}
 	
+	/**
+	 * @brief Tags running instances with the given experiment name and node names
+	 * 
+	 * @param experimentName The name of the experiment
+	 * @param nodeNames A list of names that instances will be tagged with
+	 * @deprecated \see createSpotInstances will now take care of this
+	 * 
+	 * @remark Not usable with multiple running experiments
+	 */
 	public void tagMyInstances(String experimentName, List<String> nodeNames)
 	{
 		DescribeInstancesResult instRes = ec2.describeInstances();
@@ -275,6 +316,10 @@ public class EC2Manager
 		
 	}
 	
+	/**
+	 * @brief Sets the /etc/hosts file to map node names to private IPs
+	 * @param experimentName The experiment name
+	 */
 	public void setHosts(String experimentName)
 	{
 		File keyfile = new File("C:\\Users\\Gdeter\\Documents\\ggkey.pem");
@@ -366,6 +411,12 @@ public class EC2Manager
 		}
 	}
 	
+	/**
+	 * @brief Takes a directory, relative to /home/ec2-user/ and copies it to all other
+	 * nodes in the experiment
+	 *  
+	 * @param dir The directory to copy
+	 */
 	public void distributeDirectory(String dir)
 	{
 		File keyfile = new File("C:\\Users\\Gdeter\\Documents\\ggkey.pem");
@@ -603,6 +654,13 @@ public class EC2Manager
 		}
 	}
 	
+	/**
+	 * @brief Get the public DNS of a specific node
+	 * 
+	 * @param nodeName The name of the node
+	 * @param experimentName
+	 * @return
+	 */
 	private String getNode(String nodeName, String experimentName)
 	{
 		//Find the specified node
@@ -692,7 +750,7 @@ public class EC2Manager
 	}
 	
 	/**
-	 * Find all of the experiments running on nodes
+	 * @brief Find all of the experiments running on nodes
 	 * @return An arraylist containing the experiment names
 	 */
 	public ArrayList<String> getRunningExperiments()
@@ -713,6 +771,13 @@ public class EC2Manager
 		return retn;
 	}
 	
+	/**
+	 * @brief Gets the public DNS associated with a load balancer
+	 * 
+	 * @param balancerName The name of the balancer
+	 * @param experimentName The name of the experiment
+	 * @return The public DNS of the load balancer
+	 */
 	public String getLoadBalancerDNS(String balancerName, String experimentName)
 	{
 		
