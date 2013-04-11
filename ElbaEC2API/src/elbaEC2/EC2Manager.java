@@ -397,7 +397,7 @@ public class EC2Manager
 	 *  
 	 * @param dir The directory to copy
 	 */
-	public void distributeDirectory(String dir)
+	public void distributeDirectory(String dir, String controlNode)
 	{
 		File keyfile = new File("C:\\Users\\Gdeter\\Documents\\ggkey.pem");
 	
@@ -425,7 +425,7 @@ public class EC2Manager
 							//Add this key to the mapping
 							nodeAddrMap.put(tag.getValue(), inst.getPrivateIpAddress());
 							addrs.add(addr);
-							if(tag.getValue().equals("node1"))
+							if(tag.getValue().equals(controlNode))
 								address = addr;
 						}
 					}
@@ -806,6 +806,124 @@ public class EC2Manager
 		ec2.stopInstances(stopReq);
 	}
 	
+	/**
+	 * @brief Launches and configures a series of nodes based on a XML configuration file.
+	 * 
+	 * @param xmlFile The experiment XML file
+	 * @param projectPath The folder where all these following files are located
+	 * @param generatedTar The rubbos experiment created from the XML file 
+	 * @param rubbosFiles The rubbosFiles tar
+	 * @param rubbosHtml The rubbos html files
+	 * 
+	 * @remark Files should be located at the projectPath, not sub directories
+	 */
+	public void runExperiment(String xmlFile, String projectPath, String generatedTar,
+			String rubbosFiles, String rubbosHtml)
+	{
+		//Add a trailing slash. Java likes to remove them...
+		if(projectPath.charAt(projectPath.length() - 1) != '\\')
+			projectPath += "\\";
+		
+		//Get experiment info
+		Experiment exp = Experiment.loadFromXML(projectPath + xmlFile);
+		
+		String experimentName = exp.getConfigurationFile().name;
+		String maxPrice = ".015";
+		
+		//Load the environmental variables
+		String WORK_HOME = exp.getConfigurationFile().getEnv("WORK_HOME");
+		String OUTPUT_HOME = exp.getConfigurationFile().getEnv("OUTPUT_HOME");
+		String SOFTWARE_HOME = exp.getConfigurationFile().getEnv("SOFTWARE_HOME");
+		
+		//Find the control node
+		String controlNode = "";
+		for(Object inst : exp.getConfigurationFile().instances)
+		{
+			if(inst instanceof elbaEC2.experiments.Instance)
+			{
+				elbaEC2.experiments.Instance ourInstance =
+						(elbaEC2.experiments.Instance)inst;
+				if(ourInstance.equals("control_server"))
+					controlNode = ourInstance.target;
+			}
+		}
+		
+		//Read the names from the config file and load them
+		ArrayList<String> names = new ArrayList<String>();
+		for(Object instance : exp.getConfigurationFile().instances)
+		{
+			if(instance instanceof elbaEC2.experiments.Instance)
+				names.add(((elbaEC2.experiments.Instance)instance).target);
+		}
+		
+		createSpotInstances(experimentName, maxPrice, names);
+		//ec2.tagMyInstances(experimentName, names);
+		
+		//Wait 2 minutes for the instances to boot
+		try {
+			Thread.sleep(120000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		
+		//Set up the AWS environment
+		setHosts(experimentName);
+		createLoadBalancer("HTTPDbalancer", experimentName, 8000);
+		clearLoadBalancer("HTTPDbalancer", experimentName);
+		
+		createLoadBalancer("SQLbalancer", experimentName, 3313);
+		clearLoadBalancer("SQLbalancer", experimentName);
+		
+		//Add nodes to the load balancer
+		ArrayList<String> apacheNodes = new ArrayList<String>();
+		apacheNodes.add("node7");
+		apacheNodes.add("node10");
+		addNodesToLoadBalancer("HTTPDbalancer", experimentName, apacheNodes);
+		
+		ArrayList<String> sqlNodes = new ArrayList<String>();
+		sqlNodes.add("node9");
+		sqlNodes.add("node12");
+		addNodesToLoadBalancer("SQLbalancer", experimentName, sqlNodes);
+		
+		//Copy the needed rubbos files to the control server
+		copyFileToNode(projectPath + generatedTar, controlNode, experimentName);
+		copyFileToNode(projectPath + rubbosFiles, controlNode, experimentName);
+		copyFileToNode(projectPath + rubbosHtml, controlNode, experimentName);
+		String output = runRemoteCommand(controlNode, experimentName, "tar xvf " + generatedTar + ";mkdir " + OUTPUT_HOME + " -p");
+		
+		//Get the folder's name
+		int idx = output.indexOf('/');
+		String folder = output.substring(0, idx);
+		
+		//Get the load balancers' public DNS
+		String mainSQLNode = "node9";
+		String loadBalancer = getLoadBalancerDNS("HTTPDbalancer", experimentName);
+		String sqlBalancer = getLoadBalancerDNS("SQLbalancer", experimentName);
+		
+		String command = "mv -f " + folder + "/* " + OUTPUT_HOME + "; rmdir " + folder + ";" +
+				"mv " + rubbosFiles + " " + WORK_HOME + "; mkdir " + WORK_HOME + "/apache_files -p; mv " +
+				rubbosHtml + " " + WORK_HOME + "/apache_files;" + //Move the rubbos files
+				"cd " + WORK_HOME + "; tar xvf " + rubbosFiles + "; " +
+				//"rm " + rubbosFile + "; " + //Remove the old rubbos_files tar
+				"cp " + OUTPUT_HOME + "*_conf . -R;" + //Copy the config directories to $WORKING_HOME
+				" cd apache_files; tar xvf " + rubbosHtml + "; rm " + rubbosHtml + ";" +
+				"cd " + OUTPUT_HOME + "; ";
+		if(loadBalancer != null)
+			command += "sed -i 's/^httpd_hostname.*$/httpd_hostname = " + loadBalancer + "/g' rubbos_conf/*; ";
+		if(sqlBalancer != null)
+			command += "sed -i 's/" + mainSQLNode + "/" + sqlBalancer + "/g' rubbos_conf/mysql.properties; ";
+		command += "cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15$/sleep 150/g' CONTROL_rubbos*;";
+				
+		runRemoteCommand(controlNode, experimentName, command);
+		
+		distributeDirectory("test/", controlNode);
+		
+		runRemoteCommand(controlNode, experimentName, "nohup bash -c /home/ec2-user/test/rubbosMulini6/output/scripts/run.sh &> logFile 0</dev/null &");
+
+	}
+	
 	public static void main(String[] args)
 	{
 		if(args.length < 3)
@@ -820,96 +938,11 @@ public class EC2Manager
 		String rubbosFile = args[3];
 		String rubbosHtml = args[4];
 		
-		//Add a trailing slash. Java likes to remove them...
-		rootDir += "\\";
-		
 		AWSCredentials cred = Utils.getCredentials("awsAccess.properties");
+		
 		EC2Manager ec2 = new EC2Manager(cred);
-		//ec2.createSecurityGroup("");
-		//ec2.getSpotInstances();
-		String experimentName = "ElbaTest";
-		String maxPrice = ".015";
+		ec2.runExperiment(xmlFile, rootDir, rubbosTar, rubbosFile, rubbosHtml);
 		
-		Experiment exp = Experiment.loadFromXML(rootDir + xmlFile);
-		
-		
-		//Load the environmental variables
-		String WORK_HOME = exp.getConfigurationFile().getEnv("WORK_HOME");
-		String OUTPUT_HOME = exp.getConfigurationFile().getEnv("OUTPUT_HOME");
-		String SOFTWARE_HOME = exp.getConfigurationFile().getEnv("SOFTWARE_HOME");
-		
-		//Read the names from the config file and load them
-		ArrayList<String> names = new ArrayList<String>();
-		for(Object instance : exp.getConfigurationFile().instances)
-		{
-			if(instance instanceof elbaEC2.experiments.Instance)
-				names.add(((elbaEC2.experiments.Instance)instance).target);
-		}
-		
-		ec2.createSpotInstances(experimentName, maxPrice, names);
-		//ec2.tagMyInstances(experimentName, names);
-		
-		//Wait 2 minutes for the instances to boot
-		try {
-			Thread.sleep(120000);
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		
-		
-		//ec2.getRunningExperiments();
-		ec2.setHosts(experimentName);
-		ec2.createLoadBalancer("HTTPDbalancer", experimentName, 8000);
-		ec2.clearLoadBalancer("HTTPDbalancer", experimentName);
-		
-		ec2.createLoadBalancer("SQLbalancer", experimentName, 3313);
-		ec2.clearLoadBalancer("SQLbalancer", experimentName);
-		
-		
-		ArrayList<String> apacheNodes = new ArrayList<String>();
-		apacheNodes.add("node7");
-		apacheNodes.add("node10");
-		ec2.addNodesToLoadBalancer("HTTPDbalancer", experimentName, apacheNodes);
-		
-		ArrayList<String> sqlNodes = new ArrayList<String>();
-		sqlNodes.add("node9");
-		sqlNodes.add("node12");
-		ec2.addNodesToLoadBalancer("SQLbalancer", experimentName, sqlNodes);
-		
-		ec2.copyFileToNode(rootDir + rubbosTar, "node1", experimentName);
-		ec2.copyFileToNode(rootDir + rubbosFile, "node1", experimentName);
-		ec2.copyFileToNode(rootDir + rubbosHtml, "node1", experimentName);
-		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf " + rubbosTar + ";mkdir " + OUTPUT_HOME + " -p");
-		
-		//Get the folder's name
-		int idx = output.indexOf('/');
-		String folder = output.substring(0, idx);
-		
-		//Get the load balancers' public DNS
-		String mainSQLNode = "node9";
-		String loadBalancer = ec2.getLoadBalancerDNS("HTTPDbalancer", experimentName);
-		String sqlBalancer = ec2.getLoadBalancerDNS("SQLbalancer", experimentName);
-		
-		String command = "mv -f " + folder + "/* " + OUTPUT_HOME + "; rmdir " + folder + ";" +
-				"mv " + rubbosFile + " " + WORK_HOME + "; mkdir " + WORK_HOME + "/apache_files -p; mv " +
-				rubbosHtml + " " + WORK_HOME + "/apache_files;" + //Move the rubbos files
-				"cd " + WORK_HOME + "; tar xvf " + rubbosFile + "; " +
-				//"rm " + rubbosFile + "; " + //Remove the old rubbos_files tar
-				"cp " + OUTPUT_HOME + "*_conf . -R;" + //Copy the config directories to $WORKING_HOME
-				" cd apache_files; tar xvf " + rubbosHtml + "; rm " + rubbosHtml + ";" +
-				"cd " + OUTPUT_HOME + "; ";
-		if(loadBalancer != null)
-			command += "sed -i 's/^httpd_hostname.*$/httpd_hostname = " + loadBalancer + "/g' rubbos_conf/*; ";
-		if(sqlBalancer != null)
-			command += "sed -i 's/" + mainSQLNode + "/" + sqlBalancer + "/g' rubbos_conf/mysql.properties; ";
-		command += "cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15$/sleep 150/g' CONTROL_rubbos*;";
-				
-		ec2.runRemoteCommand("node1", experimentName, command);
-		
-		ec2.distributeDirectory("test/");
-		
-		ec2.runRemoteCommand("node1", experimentName, "nohup bash -c /home/ec2-user/test/rubbosMulini6/output/scripts/run.sh &> logFile 0</dev/null &");
 	}
 
 }
