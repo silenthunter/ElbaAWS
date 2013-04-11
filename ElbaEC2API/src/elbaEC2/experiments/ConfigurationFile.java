@@ -1,6 +1,7 @@
 package elbaEC2.experiments;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import javax.xml.bind.annotation.XmlAttribute;
@@ -12,6 +13,8 @@ import javax.xml.bind.annotation.XmlRootElement;
 @XmlRootElement(name="xtbl")
 public class ConfigurationFile
 {
+	private HashMap<String, String> envMap = null;
+	
 	@XmlAttribute
 	public String name;
 	
@@ -26,6 +29,32 @@ public class ConfigurationFile
 		}
 	)
 	public List<Object> instances;
+	
+	public String getEnv(String env)
+	{
+		if(envMap == null)
+			makeEnvMap();
+		
+		if(envMap.containsKey(env))
+			return envMap.get(env);
+		else
+			return null;
+	}
+	
+	private void makeEnvMap()
+	{
+		envMap = new HashMap<String, String>();
+		for(Object obj : instances)
+		{
+			if(obj instanceof Params)
+			{
+				for(Param param : ((Params)obj).env)
+				{
+					envMap.put(param.name, param.value);
+				}
+			}
+		}
+	}
 	
 	public static class Params
 	{

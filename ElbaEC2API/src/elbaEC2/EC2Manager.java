@@ -1,21 +1,11 @@
 package elbaEC2;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.StringWriter;
-import java.text.DateFormat;
-import java.text.ParseException;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.List;
 
@@ -25,26 +15,13 @@ import ch.ethz.ssh2.Session;
 import ch.ethz.ssh2.StreamGobbler;
 
 import com.amazonaws.AmazonServiceException;
-import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.services.autoscaling.model.DescribeTagsRequest;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatchClient;
-import com.amazonaws.services.cloudwatch.model.Datapoint;
-import com.amazonaws.services.cloudwatch.model.Dimension;
-import com.amazonaws.services.cloudwatch.model.DimensionFilter;
-import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsRequest;
-import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsResult;
-import com.amazonaws.services.cloudwatch.model.ListMetricsRequest;
-import com.amazonaws.services.cloudwatch.model.ListMetricsResult;
-import com.amazonaws.services.cloudwatch.model.Metric;
-import com.amazonaws.services.cloudwatch.model.StandardUnit;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.AvailabilityZone;
 import com.amazonaws.services.ec2.model.CreateSecurityGroupRequest;
 import com.amazonaws.services.ec2.model.CreateTagsRequest;
 import com.amazonaws.services.ec2.model.DescribeAvailabilityZonesResult;
-import com.amazonaws.services.ec2.model.DescribeInstanceAttributeRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
@@ -53,7 +30,6 @@ import com.amazonaws.services.ec2.model.DescribeSpotInstanceRequestsResult;
 import com.amazonaws.services.ec2.model.DescribeTagsResult;
 import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.Instance;
-import com.amazonaws.services.ec2.model.InstanceState;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.LaunchSpecification;
 import com.amazonaws.services.ec2.model.RequestSpotInstancesRequest;
@@ -61,9 +37,9 @@ import com.amazonaws.services.ec2.model.RequestSpotInstancesResult;
 import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.SpotInstanceRequest;
+import com.amazonaws.services.ec2.model.StopInstancesRequest;
 import com.amazonaws.services.ec2.model.Tag;
 import com.amazonaws.services.ec2.model.TagDescription;
-import com.amazonaws.services.ec2.model.transform.DescribeInstanceAttributeRequestMarshaller;
 import com.amazonaws.services.elasticloadbalancing.AmazonElasticLoadBalancingClient;
 import com.amazonaws.services.elasticloadbalancing.model.ConfigureHealthCheckRequest;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerRequest;
@@ -74,18 +50,19 @@ import com.amazonaws.services.elasticloadbalancing.model.HealthCheck;
 import com.amazonaws.services.elasticloadbalancing.model.Listener;
 import com.amazonaws.services.elasticloadbalancing.model.LoadBalancerDescription;
 import com.amazonaws.services.elasticloadbalancing.model.RegisterInstancesWithLoadBalancerRequest;
-import com.amazonaws.services.route53.model.HealthCheckConfig;
-import com.amazonaws.services.route53.model.HealthCheckType;
 
-import elbaEC2.experiments.ConfigurationFile;
 import elbaEC2.experiments.Experiment;
 
+/**
+ * @brief A class for creating and managing EC2 instances used for Elba experiments 
+ * @author Gavin Gresham
+ *
+ */
 public class EC2Manager
 {
 	AWSCredentials credentials;
 	AmazonEC2 ec2;
 	AmazonElasticLoadBalancingClient elb;
-	AmazonCloudWatchClient cloudClient;
 	
 	String PEM_KEY = "C:\\Users\\Gdeter\\Documents\\ggkey.pem";
 	
@@ -98,7 +75,6 @@ public class EC2Manager
 		this.credentials = credentials;
 		ec2 = new AmazonEC2Client(credentials);
 		elb = new AmazonElasticLoadBalancingClient(credentials);
-		cloudClient = new AmazonCloudWatchClient(credentials);
 	}
 	
 	public void createSecurityGroup(String groupName)
@@ -124,7 +100,7 @@ public class EC2Manager
 	/**
 	 * @brief Creates a number of spot instances based on the size of the nodeNames list
 	 * 
-	 * Requests spot instance requests for N instances, where N is \f$nodeNames.size()\f$.
+	 * Requests spot instance requests for N instances, where N is <b>nodeNames.size()</b>.
 	 * These instances are assigned AWS tags for their node names, and experiment name for 
 	 * later filtering. 
 	 * 
@@ -324,14 +300,18 @@ public class EC2Manager
 	{
 		File keyfile = new File("C:\\Users\\Gdeter\\Documents\\ggkey.pem");
 	
-		DescribeInstancesRequest describeRequest = new DescribeInstancesRequest();
-		ArrayList<String> experimentList = new ArrayList<String>();
-		experimentList.add(experimentName);
+		//Find only instances for a given experiment 
+		DescribeInstancesRequest instReq = new DescribeInstancesRequest();
 		ArrayList<Filter> filters = new ArrayList<Filter>();
-		filters.add(new Filter("tag:ExperimentName", experimentList));
-		describeRequest.setFilters(filters);
+		ArrayList<String> filterValues = new ArrayList<String>();
+		filterValues.add(experimentName);
 		
-		DescribeInstancesResult instRes = ec2.describeInstances(describeRequest);
+		Filter experimentNameFilter = new Filter("tag:ExperimentName", filterValues);
+		filters.add(experimentNameFilter);
+		
+		instReq.setFilters(filters);
+		
+		DescribeInstancesResult instRes = ec2.describeInstances(instReq);
 		
 		ArrayList<String> addrs = new ArrayList<String>();
 		List<Reservation> resv = instRes.getReservations();
@@ -500,6 +480,13 @@ public class EC2Manager
 		}
 	}
 	
+	/**
+	 * @brief Creates a load balancer that redirects to a specific port
+	 * 
+	 * @param balancerName The name of the new load balancer
+	 * @param experimentName The experiment name
+	 * @param port The port to forward trafficon
+	 */
 	public void createLoadBalancer(String balancerName, String experimentName, int port)
 	{		
 		String fullName = experimentName + "_" + balancerName;
@@ -537,6 +524,13 @@ public class EC2Manager
 		CreateLoadBalancerResult balRes = elb.createLoadBalancer(balReq);
 	}
 	
+	/**
+	 * @brief Adds nodes from the experiment as destinations for the load balancer
+	 * 
+	 * @param balancerName The load balancer name
+	 * @param experimentName The experiment name
+	 * @param nodeNames A list of the names of nodes to add
+	 */
 	public void addNodesToLoadBalancer(String balancerName, String experimentName, List<String> nodeNames)
 	{
 		//Get the instances associated with the name
@@ -549,6 +543,7 @@ public class EC2Manager
 		
 		ArrayList<Filter> filters = new ArrayList<Filter>();
 		filters.add(nameFilter);
+		filters.add(experimentFilter);
 		instReq.setFilters(filters);
 		
 		DescribeInstancesResult instResults = ec2.describeInstances(instReq);
@@ -577,6 +572,12 @@ public class EC2Manager
 		elb.registerInstancesWithLoadBalancer(registerInstancesRequest);
 	}
 	
+	/**
+	 * @brief Removes all nodes from the load balancer
+	 * 
+	 * @param balancerName The name of the load balancer
+	 * @param experimentName The name of the experiment
+	 */
 	public void clearLoadBalancer(String balancerName, String experimentName)
 	{
 		String fullName = experimentName + "_" + balancerName;
@@ -605,55 +606,15 @@ public class EC2Manager
 		
 	}
 	
-	public void cloudMetrics()
+	/**
+	 * @brief Gets the public DNS of a node
+	 * 
+	 * @param nodeName The name of the node
+	 * @param experimentName The name of the experiment
+	 * @return The DNS of the node
+	 */
+	private String getNodeDNS(String nodeName, String experimentName)
 	{
-		ListMetricsRequest metricReq = new ListMetricsRequest();
-		metricReq.setMetricName("CPUUtilization");
-		metricReq.setNamespace("AWS/EC2");
-		
-		/*ArrayList<DimensionFilter> filters = new ArrayList<DimensionFilter>();
-		DimensionFilter dimFil = new DimensionFilter();
-		dimFil.setName("CPUUtilization");
-		filters.add(dimFil);
-		metricReq.setDimensions(filters);*/
-		
-		ListMetricsResult metricRes = cloudClient.listMetrics(metricReq);
-		
-		List<Metric> metrics = metricRes.getMetrics();
-		for(Metric metric : metrics)
-		{
-			System.out.println(metric.toString());
-		}
-		
-		GetMetricStatisticsRequest statReq = new GetMetricStatisticsRequest();
-		statReq.setMetricName("CPUUtilization");
-		try {
-			statReq.setStartTime(DateFormat.getDateInstance(DateFormat.SHORT).parse("3/18/2013"));
-		} catch (ParseException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		statReq.setEndTime(new Date());
-		statReq.setPeriod(600);
-		
-		ArrayList<String> statistics = new ArrayList<String>();
-		statistics.add("Average");
-		statReq.setStatistics(statistics);
-		statReq.setNamespace("AWS/EC2");
-		statReq.setUnit(StandardUnit.Percent);
-		
-		ArrayList<Dimension> dimensions = new ArrayList<Dimension>();
-		dimensions.add(new Dimension().withName("InstanceId").withValue("i-fe6c878e"));
-		statReq.setDimensions(dimensions);
-		
-		GetMetricStatisticsResult statRes = cloudClient.getMetricStatistics(statReq); 
-		List<Datapoint> datapoints = statRes.getDatapoints();
-		for(Datapoint point : datapoints)
-		{
-			System.out.println(point.getTimestamp().toString());
-		}
-	}
-	
 	/**
 	 * @brief Get the public DNS of a specific node
 	 * 
@@ -661,8 +622,6 @@ public class EC2Manager
 	 * @param experimentName
 	 * @return
 	 */
-	private String getNode(String nodeName, String experimentName)
-	{
 		//Find the specified node
 		DescribeInstancesRequest describeReq = new DescribeInstancesRequest();
 		Filter nameFilter = new Filter("tag:Name").withValues(nodeName);
@@ -687,9 +646,16 @@ public class EC2Manager
 		return hostname;
 	}
 	
+	/**
+	 * @brief Copies a file from the local file system to a node
+	 * 
+	 * @param file The location of the local file
+	 * @param nodeName The name of the node
+	 * @param experimentName The name of the experiment
+	 */
 	public void copyFileToNode(String file, String nodeName, String experimentName)
 	{
-		String hostname = getNode(nodeName, experimentName);
+		String hostname = getNodeDNS(nodeName, experimentName);
 		
 		//No node found
 		if(hostname == null)
@@ -709,10 +675,20 @@ public class EC2Manager
 		}
 	}
 	
+	/**
+	 * @brief Executes a shell command on a node
+	 * 
+	 * @param nodeName The name of the remote node
+	 * @param experimentName The name of the experiment
+	 * @param command The command to run
+	 * @return The output of the command
+	 * @remark This method blocks until the command has finished
+	 * @remark Commands can be batched together using semicolons
+	 */
 	public String runRemoteCommand(String nodeName, String experimentName, String command)
 	{
 		String retn = "";
-		String hostname = getNode(nodeName, experimentName);
+		String hostname = getNodeDNS(nodeName, experimentName);
 		if(hostname == null)
 			return retn;
 		
@@ -798,6 +774,38 @@ public class EC2Manager
 		return dns;
 	}
 	
+	/**
+	 * @brief Shuts down all instances associated with the specified experiment
+	 * 
+	 * @param experimentName The name of the experiment
+	 */
+	public void killExperiment(String experimentName)
+	{
+		//Filter for this experiment only
+		DescribeInstancesRequest descReq = new DescribeInstancesRequest();
+		ArrayList<String> experiments = new ArrayList<String>();
+		experiments.add(experimentName);
+		ArrayList<Filter> filters = new ArrayList<Filter>();
+		filters.add(new Filter("tag:ExperimentName", experiments));
+		descReq.setFilters(filters);
+		
+		DescribeInstancesResult result = ec2.describeInstances(descReq);
+		
+		//Get instance IDs
+		ArrayList<String> instanceIds = new ArrayList<String>();
+		for(Reservation resv : result.getReservations())
+		{
+			for(Instance inst : resv.getInstances())
+			{
+				instanceIds.add(inst.getInstanceId());
+			}
+		}
+		
+		//Stop the instances
+		StopInstancesRequest stopReq = new StopInstancesRequest(instanceIds);
+		ec2.stopInstances(stopReq);
+	}
+	
 	public static void main(String[] args)
 	{
 		if(args.length < 3)
@@ -824,6 +832,12 @@ public class EC2Manager
 		
 		Experiment exp = Experiment.loadFromXML(rootDir + xmlFile);
 		
+		
+		//Load the environmental variables
+		String WORK_HOME = exp.getConfigurationFile().getEnv("WORK_HOME");
+		String OUTPUT_HOME = exp.getConfigurationFile().getEnv("OUTPUT_HOME");
+		String SOFTWARE_HOME = exp.getConfigurationFile().getEnv("SOFTWARE_HOME");
+		
 		//Read the names from the config file and load them
 		ArrayList<String> names = new ArrayList<String>();
 		for(Object instance : exp.getConfigurationFile().instances)
@@ -832,7 +846,7 @@ public class EC2Manager
 				names.add(((elbaEC2.experiments.Instance)instance).target);
 		}
 		
-		//ec2.createSpotInstances(experimentName, maxPrice, names);
+		ec2.createSpotInstances(experimentName, maxPrice, names);
 		//ec2.tagMyInstances(experimentName, names);
 		
 		//Wait 2 minutes for the instances to boot
@@ -866,7 +880,7 @@ public class EC2Manager
 		ec2.copyFileToNode(rootDir + rubbosTar, "node1", experimentName);
 		ec2.copyFileToNode(rootDir + rubbosFile, "node1", experimentName);
 		ec2.copyFileToNode(rootDir + rubbosHtml, "node1", experimentName);
-		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf " + rubbosTar + ";mkdir test/rubbosMulini6/output -p");
+		String output = ec2.runRemoteCommand("node1", experimentName, "tar xvf " + rubbosTar + ";mkdir " + OUTPUT_HOME + " -p");
 		
 		//Get the folder's name
 		int idx = output.indexOf('/');
@@ -877,18 +891,19 @@ public class EC2Manager
 		String loadBalancer = ec2.getLoadBalancerDNS("HTTPDbalancer", experimentName);
 		String sqlBalancer = ec2.getLoadBalancerDNS("SQLbalancer", experimentName);
 		
-		String command = "mv -f " + folder + "/* test/rubbosMulini6/output/; rmdir " + folder + ";" +
-				"mv " + rubbosFile + " test/; mkdir test/apache_files; mv " + rubbosHtml + " test/apache_files;" + //Move the rubbos files
-				"cd test; tar xvf " + rubbosFile + "; " +
+		String command = "mv -f " + folder + "/* " + OUTPUT_HOME + "; rmdir " + folder + ";" +
+				"mv " + rubbosFile + " " + WORK_HOME + "; mkdir " + WORK_HOME + "/apache_files -p; mv " +
+				rubbosHtml + " " + WORK_HOME + "/apache_files;" + //Move the rubbos files
+				"cd " + WORK_HOME + "; tar xvf " + rubbosFile + "; " +
 				//"rm " + rubbosFile + "; " + //Remove the old rubbos_files tar
-				"cp rubbosMulini6/output/*_conf . -R;" + //Copy the config directories to $WORKING_HOME
+				"cp " + OUTPUT_HOME + "*_conf . -R;" + //Copy the config directories to $WORKING_HOME
 				" cd apache_files; tar xvf " + rubbosHtml + "; rm " + rubbosHtml + ";" +
-				"cd ~/test/rubbosMulini6/output/; ";
+				"cd " + OUTPUT_HOME + "; ";
 		if(loadBalancer != null)
 			command += "sed -i 's/^httpd_hostname.*$/httpd_hostname = " + loadBalancer + "/g' rubbos_conf/*; ";
 		if(sqlBalancer != null)
 			command += "sed -i 's/" + mainSQLNode + "/" + sqlBalancer + "/g' rubbos_conf/mysql.properties; ";
-		command += "cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15/sleep 150/g' CONTROL_rubbos*;";
+		command += "cd scripts; rm CONTROL_emu*; sed -i 's/sleep 15$/sleep 150/g' CONTROL_rubbos*;";
 				
 		ec2.runRemoteCommand("node1", experimentName, command);
 		
