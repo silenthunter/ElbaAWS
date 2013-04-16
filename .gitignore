@@ -4,5 +4,6 @@
 bin/
 Documentation/*
 !Documentation/Guide
+!Documentation/Report
 awsAccess.properties
 EC2 notes
