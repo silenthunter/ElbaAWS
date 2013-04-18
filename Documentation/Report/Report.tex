@@ -1,6 +1,6 @@
-\documentclass{report}
-
-\nofiles
+\documentclass{article}
+\usepackage{array}
+\usepackage[numbers,square,sort]{natbib}
 
 \begin{document}
 
@@ -10,14 +10,47 @@
 \maketitle
 
 \tableofcontents
+\pagebreak
 
-\chapter*{Objective}
+\section{Objective}
 When I began experimenting with RUBBoS on Emulba, I quickly discovered that there were some limitations. There are a limited number of machines, and often times I ended up unable to run my experiments due to these limited resources. An alternative was needed.
 
 This is were Amazon's Elastic Compute Cluster (EC2) has been remarkably useful. Virtual instances are sold by the hour, and are available in a multitude of hardware configurations. The challenge with these instances is that they begin as blank slates that lack any of the configuration that the RUBBoS scripts need to run. This is the objective of this project; To create an environment that allows EC2 to be used as a viable alternative to Emulab.
-\chapter*{Approach}
+\section{Approach}
+\subsection{Introduction to EC2}
+Much like Emulab, Amazon Web Services allow users to requisition virtual instances. The instances exist with various types of hardware, seen in figure \ref{ec2instancetypes}, and allow a wider variety of hardware to be tested.
+
+\begin{table*}[tb]
+\centering
+\label{ec2instancetypes}
+\begin{tabular}{|>{\raggedright}p{4cm}|c|c|c|c|}
+\hline
+Type & EC2 Compute Units & Memory & Storage & IO Performance\\\hline
+M1 Small & 1 & 1.7GB & 160GB & Moderate\\\hline
+M1 Medium & 2 & 3.75GB & 410GB & Moderate\\\hline
+M1 Large & 4 & 7.5GB & 850GB & Moderate\\\hline
+M1 Extra Large & 8 & 15GB & 1,690GB & High\\\hline
+M3\linebreak Extra Large & 13 & 15GB & EBS Storage & Moderate\\\hline
+M3 Double\linebreak Extra Large & 26 & 30GB & EBS Storage & High\\\hline
+High-Memory\linebreak Extra Large & 6.5 & 17.1GB & 420GB & Moderate\\\hline
+High-Memory\linebreak Double Extra Large & 13 & 34.2GB & 850GB & High\\\hline
+High-Memory\linebreak Quadruple Extra Large & 26 & 68.4GB & 1690GB & High\\\hline
+High-CPU\linebreak Medium & 5 & 1.7GB & 350GB & Moderate\\\hline
+High-CPU\linebreak Extra Large & 5 & 7GB & 1690GB & High\\\hline
+Cluster Compute\linebreak Eight Extra Large & 88 & 60.5GB & 3370GB & Very High\\\hline
+\end{tabular}
+\caption{The hardware specifications for EC2 instances. "One EC2 Compute Unit provides the equivalent CPU capacity of a 1.0-1.2 GHz 2007 Opteron or 2007 Xeon processor" \cite{awsEC2Specs}, \cite{awsUserGuide}}
+\end{table*}
+
+\subsubsection{Types of Instances}
+\subsubsection{On Demand}
+\subsubsection{Reserved}
+\subsubsection{Spot}
 \section{Challenges}
 \subsection{Cost}
-\chapter*{Results}
-\chapter*{Conclusion}
+\section{Results}
+\section{Conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{bibliography}
 \end{document}
