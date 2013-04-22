@@ -18,11 +18,10 @@ When I began experimenting with RUBBoS on Emulba, I quickly discovered that ther
 This is were Amazon's Elastic Compute Cluster (EC2) has been remarkably useful. Virtual instances are sold by the hour, and are available in a multitude of hardware configurations. The challenge with these instances is that they begin as blank slates that lack any of the configuration that the RUBBoS scripts need to run. This is the objective of this project; To create an environment that allows EC2 to be used as a viable alternative to Emulab.
 \section{Approach}
 \subsection{Introduction to EC2}
-Much like Emulab, Amazon Web Services (AWS) allow users to requisition virtual instances. The instances exist with various types of hardware, seen in figure \ref{ec2instancetypes}, and allow a wider variety of hardware to be tested. However, EC2 is just a small part of what AWS offers. It is also possible to use load balancers, cloud storage, relational and non-relation databases, and scalable communication methods. This suite of tools allows us to do some things that would be difficult to implement on the standard Emulab environment.
+Much like Emulab, Amazon Web Services (AWS) allow users to requisition virtual instances. The instances exist with various types of hardware, seen in Table \ref{ec2instancetypes}, and allow a wider variety of hardware to be tested. However, EC2 is just a small part of what AWS offers. It is also possible to use load balancers, cloud storage, relational and non-relation databases, and scalable communication methods. This suite of tools allows us to do some things that would be difficult to implement on the standard Emulab environment.
 
 \begin{table*}[tb]
 \centering
-\label{ec2instancetypes}
 \begin{tabular}{|>{\raggedright}p{4cm}|c|c|}
 \hline
 Type & EC2 Compute Units & Memory\\\hline
@@ -39,7 +38,8 @@ High-CPU\linebreak Medium & 5 & 1.7GB\\\hline
 High-CPU\linebreak Extra Large & 5 & 7GB\\\hline
 Cluster Compute\linebreak Eight Extra Large & 88 & 60.5GB\\\hline
 \end{tabular}
-\caption{The hardware specifications for EC2 instances. "One EC2 Compute Unit provides the equivalent CPU capacity of a 1.0-1.2 GHz 2007 Opteron or 2007 Xeon processor" \cite{awsEC2Specs}}
+\caption{The hardware specifications for EC2 instances. "One EC2 Compute Unit provides the equivalent CPU capacity of a 1.0-1.2 GHz 2007 Opteron or 2007 Xeon processor". \cite{awsEC2Specs}}
+\label{ec2instancetypes}
 \end{table*}
 
 \subsubsection{Types of Instances}
@@ -54,10 +54,9 @@ However, unlike other types of instances, Spot instances do not have a fixed pri
 \subsection{Operating System Configuration}
 \section{Challenges}
 \subsection{Cost}
-While I do not know how Emulab is funded, it is important to note that AWS does have fees associated with its services. EC2 instances charge per hour used, seen in figure \ref{ec2instancepricing}, and larger experiments could cost a significant amount. This problem is tempered by Spot instances, which can cost 1/10th of traditional instances, but this only minimizes costs.
+While I do not know how Emulab is funded, it is important to note that AWS does have fees associated with its services. EC2 instances charge per hour used, seen in Table \ref{ec2instancepricing}, and larger experiments could cost a significant amount. This problem is tempered by Spot instances, which can cost 1/10th of traditional instances, but this only minimizes costs.
 
 \begin{table}[bt]
-\label{ec2instancepricing}
 \begin{tabular}{|>{\raggedright}p{4cm}|c|c|c|}
 \hline
 Type & On-Demand & Reserved$^1$ & Spot$^2$\\\hline
@@ -74,9 +73,10 @@ High-CPU\linebreak Medium & \$0.145 & \$0.036 (\$450) & \$0.018\\\hline
 High-CPU\linebreak Extra Large & \$0.58 & \$0.144 (\$1800) & \$0.07\\\hline
 Cluster Compute\linebreak Eight Extra Large & \$1.30 & \$0.297 (\$4060) & \$0.208\\\hline
 \end{tabular}
-\caption{The pricing for various types of EC2 instances.\newline\newline
-\footnotesize [1] The costs in parenthesis are yearly reservation costs.\newline
-[2] The average spot instance costs upon the time of writing. Prices can fluctuate significantly.}
+\caption{The pricing for various types of EC2 instances.\cite{awsEC2pricing} \newline\newline
+\footnotesize 1 The costs in parenthesis are yearly reservation costs.\newline
+2 The average spot instance costs upon the time of writing. Prices can fluctuate significantly.}
+\label{ec2instancepricing}
 \end{table}
 
 \section{Results}
