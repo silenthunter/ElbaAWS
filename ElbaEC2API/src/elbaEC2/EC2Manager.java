@@ -37,9 +37,11 @@ import com.amazonaws.services.ec2.model.RequestSpotInstancesResult;
 import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.SpotInstanceRequest;
+import com.amazonaws.services.ec2.model.SpotInstanceStatus;
 import com.amazonaws.services.ec2.model.StopInstancesRequest;
 import com.amazonaws.services.ec2.model.Tag;
 import com.amazonaws.services.ec2.model.TagDescription;
+import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
 import com.amazonaws.services.elasticloadbalancing.AmazonElasticLoadBalancingClient;
 import com.amazonaws.services.elasticloadbalancing.model.ConfigureHealthCheckRequest;
 import com.amazonaws.services.elasticloadbalancing.model.CreateLoadBalancerRequest;
@@ -489,7 +491,7 @@ public class EC2Manager
 	 */
 	public void createLoadBalancer(String balancerName, String experimentName, int port)
 	{		
-		String fullName = experimentName + "_" + balancerName;
+		String fullName = experimentName + "-" + balancerName;
 		
 		//Configure the balancer
 		CreateLoadBalancerRequest balReq = new CreateLoadBalancerRequest();
@@ -514,14 +516,15 @@ public class EC2Manager
 		healthCheck.setHealthyThreshold(2);
 		healthCheck.setUnhealthyThreshold(2);
 		healthCheck.setInterval(30);
-		healthCheck.setTarget("TCP");
+		healthCheck.setTarget("TCP:" + port);
+		healthCheck.setTimeout(15);
 		
 		configureHealthCheckRequest.setHealthCheck(healthCheck);
 		
-		elb.configureHealthCheck(configureHealthCheckRequest);
-		
 		//Create the balancer
 		CreateLoadBalancerResult balRes = elb.createLoadBalancer(balReq);
+		
+		elb.configureHealthCheck(configureHealthCheckRequest);
 	}
 	
 	/**
@@ -533,6 +536,8 @@ public class EC2Manager
 	 */
 	public void addNodesToLoadBalancer(String balancerName, String experimentName, List<String> nodeNames)
 	{
+		String fullName = experimentName + "-" + balancerName;
+		
 		//Get the instances associated with the name
 		DescribeInstancesRequest instReq = new DescribeInstancesRequest();
 		Filter nameFilter = new Filter("tag:NodeName", nodeNames);
@@ -566,7 +571,7 @@ public class EC2Manager
 			instances.add(new com.amazonaws.services.elasticloadbalancing.model.Instance(instanceId));
 		
 		RegisterInstancesWithLoadBalancerRequest registerInstancesRequest = new RegisterInstancesWithLoadBalancerRequest();
-		registerInstancesRequest.setLoadBalancerName(balancerName);
+		registerInstancesRequest.setLoadBalancerName(fullName);
 		registerInstancesRequest.setInstances(instances);
 		
 		elb.registerInstancesWithLoadBalancer(registerInstancesRequest);
@@ -580,7 +585,7 @@ public class EC2Manager
 	 */
 	public void clearLoadBalancer(String balancerName, String experimentName)
 	{
-		String fullName = experimentName + "_" + balancerName;
+		String fullName = experimentName + "-" + balancerName;
 		
 		//Get the current load balancers
 		DescribeLoadBalancersResult loadBalancerRes = elb.describeLoadBalancers();
@@ -626,9 +631,11 @@ public class EC2Manager
 		DescribeInstancesRequest describeReq = new DescribeInstancesRequest();
 		Filter nameFilter = new Filter("tag:Name").withValues(nodeName);
 		Filter experFilter = new Filter("tag:ExperimentName").withValues(experimentName);
+		Filter stateFilter = new Filter("instance-state-name").withValues("running");
 		ArrayList<Filter> filters = new ArrayList<Filter>();
 		filters.add(nameFilter);
 		filters.add(experFilter);
+		filters.add(stateFilter);
 		describeReq.setFilters(filters);
 		
 		DescribeInstancesResult describeRes = ec2.describeInstances(describeReq);
@@ -757,7 +764,7 @@ public class EC2Manager
 	public String getLoadBalancerDNS(String balancerName, String experimentName)
 	{
 		
-		String fullName = experimentName + "_" + balancerName;
+		String fullName = experimentName + "-" + balancerName;
 		String dns = null;
 		
 		DescribeLoadBalancersResult balancers = elb.describeLoadBalancers();
@@ -802,8 +809,8 @@ public class EC2Manager
 		}
 		
 		//Stop the instances
-		StopInstancesRequest stopReq = new StopInstancesRequest(instanceIds);
-		ec2.stopInstances(stopReq);
+		TerminateInstancesRequest stopReq = new TerminateInstancesRequest(instanceIds);
+		ec2.terminateInstances(stopReq);
 	}
 	
 	/**
@@ -843,7 +850,7 @@ public class EC2Manager
 			{
 				elbaEC2.experiments.Instance ourInstance =
 						(elbaEC2.experiments.Instance)inst;
-				if(ourInstance.equals("control_server"))
+				if(ourInstance.type.equals("control_server"))
 					controlNode = ourInstance.target;
 			}
 		}
@@ -856,21 +863,21 @@ public class EC2Manager
 				names.add(((elbaEC2.experiments.Instance)instance).target);
 		}
 		
-		createSpotInstances(experimentName, maxPrice, names);
+		/*createSpotInstances(experimentName, maxPrice, names);
 		//ec2.tagMyInstances(experimentName, names);
 		
 		//Wait 2 minutes for the instances to boot
 		try {
-			Thread.sleep(120000);
+			Thread.sleep(180000);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		}
+		}*/
 		
 		
 		//Set up the AWS environment
 		setHosts(experimentName);
-		createLoadBalancer("HTTPDbalancer", experimentName, 8000);
+		/*createLoadBalancer("HTTPDbalancer", experimentName, 8000);
 		clearLoadBalancer("HTTPDbalancer", experimentName);
 		
 		createLoadBalancer("SQLbalancer", experimentName, 3313);
@@ -879,13 +886,13 @@ public class EC2Manager
 		//Add nodes to the load balancer
 		ArrayList<String> apacheNodes = new ArrayList<String>();
 		apacheNodes.add("node7");
-		apacheNodes.add("node10");
+		//apacheNodes.add("node10");
 		addNodesToLoadBalancer("HTTPDbalancer", experimentName, apacheNodes);
 		
 		ArrayList<String> sqlNodes = new ArrayList<String>();
 		sqlNodes.add("node9");
-		sqlNodes.add("node12");
-		addNodesToLoadBalancer("SQLbalancer", experimentName, sqlNodes);
+		//sqlNodes.add("node12");
+		addNodesToLoadBalancer("SQLbalancer", experimentName, sqlNodes);*/
 		
 		//Copy the needed rubbos files to the control server
 		copyFileToNode(projectPath + generatedTar, controlNode, experimentName);
