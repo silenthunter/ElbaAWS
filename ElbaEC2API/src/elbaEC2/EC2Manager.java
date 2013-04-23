@@ -734,11 +734,12 @@ public class EC2Manager
 	
 	/**
 	 * @brief Find all of the experiments running on nodes
-	 * @return An arraylist containing the experiment names
+	 * @return An hashmap containing the experiment names as a key, 
+	 * and the number of instances as the value. 
 	 */
-	public ArrayList<String> getRunningExperiments()
+	public HashMap<String, Integer> getRunningExperiments()
 	{
-		ArrayList<String> retn = new ArrayList<String>();
+		HashMap<String, Integer> count = new HashMap<String, Integer>();
 		
 		DescribeTagsResult tagResult = ec2.describeTags();
 		List<TagDescription> tags = tagResult.getTags();
@@ -746,12 +747,19 @@ public class EC2Manager
 		//Add all unique experiments
 		for(TagDescription tag : tags)
 		{
-			if(tag.getKey().equals("ExperimentName") && retn.contains(tag.getValue()))
-			retn.add(tag.getValue());
+			if(tag.getKey().equals("ExperimentName") && !count.containsKey(tag.getValue()))
+			{
+				count.put(tag.getValue(), 1);
+			}
+			else if(tag.getKey().equals("ExperimentName"))
+			{
+				int current = count.get(tag.getValue());
+				count.put(tag.getValue(), current + 1);
+			}
 		}
 		
 		
-		return retn;
+		return count;
 	}
 	
 	/**

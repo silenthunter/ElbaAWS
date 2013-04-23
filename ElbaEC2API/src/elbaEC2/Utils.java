@@ -17,14 +17,14 @@ import com.amazonaws.auth.ClasspathPropertiesFileCredentialsProvider;
 
 public class Utils
 {
-	static AWSCredentials getCredentials(String fileName)
+	public static AWSCredentials getCredentials(String fileName)
 	{
 		AWSCredentials cred = new ClasspathPropertiesFileCredentialsProvider(fileName).getCredentials();
 		
 		return cred;
 	}
 	
-	static void loadXMLConfiguration(String fileName)
+	public static void loadXMLConfiguration(String fileName)
 	{
 		try
 		{
