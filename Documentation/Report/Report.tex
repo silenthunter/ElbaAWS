@@ -42,6 +42,7 @@ Cluster Compute\linebreak Eight Extra Large & 88 & 60.5GB\\\hline
 \label{ec2instancetypes}
 \end{table*}
 
+\subsubsection{Types of Instances}
 \subsubsection{On Demand}
 These instances are available whenever you need them, and at a fixed cost. You gain the benefit of being able to acquire resources whenever you need them, but at the highest cost.
 \subsubsection{Reserved}
@@ -52,7 +53,7 @@ However, unlike other types of instances, Spot instances do not have a fixed pri
 \subsection{Amazon Web Services JAVA API}
 Much of this project focused on implementing various functions to interact with  the AWS SDK for Java. These methods deal with the creation of instances, assigning tags to those instances, and configuration elastic load balancers. The wrapper I have developed has been created specifically with Elba experiments in mind. It should allow for multiple experiments to run concurrently, and once they launch the experiments are not tied to application that launched them.
 \subsection{Operating System Configuration}
-There were several changes that were required to create a system image that would be compatible with RUBBoS scripts. The metadata required to populate some of the same environmental variables as emulab is set using Instance Tags. These are set upon the creation of an instance, and include tags for both the node's name, and the name of the experiment. This metadata is available within a running instance by sending and HTTP request to a known ip address \cite{metaDataRetr}. When an instance boots, custom scripts retrieve this metadata and loads it into the environmental variables.
+There were several changes that were required to create a system image that would be compatible with RUBBoS scripts.
 \section{Challenges}
 \subsection{Cost}
 While I do not know how Emulab is funded, it is important to note that AWS does have fees associated with its services. EC2 instances charge per hour used, seen in Table \ref{ec2instancepricing}, and larger experiments could cost a significant amount. This problem is tempered by Spot instances, which can cost 1/10th of traditional instances, but this only minimizes costs.
@@ -80,25 +81,17 @@ Cluster Compute\linebreak Eight Extra Large & \$1.30 & \$0.297 (\$4060) & \$0.20
 \label{ec2instancepricing}
 \end{table}
 
-\subsection{RUBBoS and Elba}
-While I certainly had my share of issues involving the AWS API learning curve, it wasn't anything unexpected or too problematic. RUBBoS and Elba, however, were my main source of frustration throughout this project. It took much longer than I had expected to learn how to modify configuration files, and deploy them correctly. Chien and Deepal were invaluable in gaining an understanding of the project, but it still took several weeks before I was able to begin my own development in earnest. I understand it's a relatively new project, but I wish there was more documentation available.
-
-\subsection{Load Balancing}
-The default configuration that was provided was for one apache server, one application server, and one database server. Scaling this set up means that the traffic previously meant for one server should be spread amongst N servers. For some layers this is simple, others not as much.
-HTTPD servers are one of the easiest to scale. Amazon provides elastic load balancers that simply receive traffic from one port, and distribute it to any registered EC2 instance. Using apache automatically allows for distributed application servers. It turns out databases are the most difficult layer to load balance.
-As we learned in class, you often need to balance Consistency, Availability, and Partition tolerance (CAP). In a real enterprise environment a MySQL clustering server would be needed. Due to time constraints consistency had to be dropped. A naive approach is used where all incoming requests are load balanced to individual MySQL instances.
-
+\section{Results}
 \section{Future Development}
 \subsection{Scaling}
 As experiments scale, the sequential nature of server configuration in the scripts could cause signfinicant delays. To alleviate this problem, I propose a approach for simulataneously configuring all the servers.
 A service exists within AWS called the Simple Notification Service (SNS) that can help accomplish this goal. SNS allows messages to be pushed to a group of subscribed clients. By setting up a HTTP servlet on each EC2 instance messages can be broadcast to every instance in an experiment. For example, if an experiment happens to have 50 apache servers all requiring compilation and configuration, the sequential setup time is both lengthy and on AWS costly. With SNS the control server could broadcast these commands that should be identical to every apache instance at once.
+\subsection{Shared Drive}
 \subsection{Generic Configuration}
 While most of the AWSElbaAPI is generic, the parsing of experiment XML files and the commands run are specific to RUBBoS. Future development would either include a way for other developers to write custom parsers for their configurations, or inclusion of more parsers within the core app.
 \subsection{Management Application}
 A graphical representation of experiments are running and their state would be a great help to researcher I believe. I would like to create a GUI that would show running experiments, their status, and a menu for creating and loading experiments from XML files.
-\subsection{MySQL Cluster}
 \section{Conclusion}
-Overall I believe ElbaEC2 could be a useful contribution to the Elba project. It's still in early development, and certainly not ready for production, but the core API is solid. Tests of the API work correctly in creating instances, and configuration them, but RUBBoS results were extremely hit or miss. Further study would be beneficial I believe.
 
 \bibliographystyle{plainnat}
 \bibliography{bibliography}

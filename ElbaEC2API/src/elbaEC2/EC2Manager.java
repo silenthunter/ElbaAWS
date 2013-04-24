@@ -27,6 +27,7 @@ import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
 import com.amazonaws.services.ec2.model.DescribeSpotInstanceRequestsRequest;
 import com.amazonaws.services.ec2.model.DescribeSpotInstanceRequestsResult;
+import com.amazonaws.services.ec2.model.DescribeTagsRequest;
 import com.amazonaws.services.ec2.model.DescribeTagsResult;
 import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.Instance;
@@ -37,8 +38,6 @@ import com.amazonaws.services.ec2.model.RequestSpotInstancesResult;
 import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.SpotInstanceRequest;
-import com.amazonaws.services.ec2.model.SpotInstanceStatus;
-import com.amazonaws.services.ec2.model.StopInstancesRequest;
 import com.amazonaws.services.ec2.model.Tag;
 import com.amazonaws.services.ec2.model.TagDescription;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
@@ -128,7 +127,7 @@ public class EC2Manager
 		LaunchSpecification launchSpecification = new LaunchSpecification();
 		launchSpecification.setSecurityGroups(securityGroups);
 		launchSpecification.setImageId("ami-f8128a91");
-		launchSpecification.setInstanceType(InstanceType.M1Small);
+		launchSpecification.setInstanceType(InstanceType.T1Micro);
 		spotReq.setLaunchSpecification(launchSpecification);
 		
 		//Launch the instances
@@ -871,7 +870,7 @@ public class EC2Manager
 				names.add(((elbaEC2.experiments.Instance)instance).target);
 		}
 		
-		/*createSpotInstances(experimentName, maxPrice, names);
+		createSpotInstances(experimentName, maxPrice, names);
 		//ec2.tagMyInstances(experimentName, names);
 		
 		//Wait 2 minutes for the instances to boot
@@ -880,12 +879,12 @@ public class EC2Manager
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		}*/
+		}
 		
 		
 		//Set up the AWS environment
 		setHosts(experimentName);
-		/*createLoadBalancer("HTTPDbalancer", experimentName, 8000);
+		createLoadBalancer("HTTPDbalancer", experimentName, 8000);
 		clearLoadBalancer("HTTPDbalancer", experimentName);
 		
 		createLoadBalancer("SQLbalancer", experimentName, 3313);
@@ -900,7 +899,7 @@ public class EC2Manager
 		ArrayList<String> sqlNodes = new ArrayList<String>();
 		sqlNodes.add("node9");
 		//sqlNodes.add("node12");
-		addNodesToLoadBalancer("SQLbalancer", experimentName, sqlNodes);*/
+		addNodesToLoadBalancer("SQLbalancer", experimentName, sqlNodes);
 		
 		//Copy the needed rubbos files to the control server
 		copyFileToNode(projectPath + generatedTar, controlNode, experimentName);
@@ -935,7 +934,7 @@ public class EC2Manager
 		
 		distributeDirectory("test/", controlNode);
 		
-		runRemoteCommand(controlNode, experimentName, "nohup bash -c /home/ec2-user/test/rubbosMulini6/output/scripts/run.sh &> logFile 0</dev/null &");
+		//runRemoteCommand(controlNode, experimentName, "nohup bash -c /home/ec2-user/test/rubbosMulini6/output/scripts/run.sh &> logFile 0</dev/null &");
 
 	}
 	

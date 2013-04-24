@@ -20,14 +20,20 @@ public class ElbaCLI {
 	{
 		Options options = new Options();
 		
+		options.addOption("h", "help", false, "Shows this screen");
 		options.addOption("e", "Experiment", true, "The name of the experiment");
-		options.addOption(OptionBuilder.withLongOpt("auth").withDescription("The Amazon access file.").hasArg().isRequired().create());
+		options.addOption(OptionBuilder.withLongOpt("auth").withDescription("The Amazon access file.").hasArg().create());
 		
 		CommandLineParser clParser = new BasicParser();
 		CommandLine cmd = clParser.parse(options, args);
 		
-		HelpFormatter helpFormatter = new HelpFormatter();
-		helpFormatter.printHelp("ElbaCLI <Command>", "Available commands:\nlist\nstart\nstop", options, "");
+		//Print help
+		if(cmd.hasOption("help"))
+		{
+			HelpFormatter helpFormatter = new HelpFormatter();
+			helpFormatter.printHelp("ElbaCLI <Command>", "Available commands:\nlist\nstart\nstop", options, "");
+			return;
+		}
 		
 		AWSCredentials cred = Utils.getCredentials(cmd.getOptionValue("auth"));
 		EC2Manager ec2 = new EC2Manager(cred);
