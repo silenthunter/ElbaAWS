@@ -53,6 +53,11 @@ import com.amazonaws.services.elasticloadbalancing.model.LoadBalancerDescription
 import com.amazonaws.services.elasticloadbalancing.model.RegisterInstancesWithLoadBalancerRequest;
 
 import elbaEC2.experiments.Experiment;
+/**
+@mainpage
+See EC2Manager for the relevant documentation.
+*/
+
 
 /**
  * @brief A class for creating and managing EC2 instances used for Elba experiments 

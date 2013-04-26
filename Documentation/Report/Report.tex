@@ -52,9 +52,9 @@ If you can be patient, these are likely the best type of instances for experimen
 
 However, unlike other types of instances, Spot instances do not have a fixed price. You specify how much you are willing to pay per hour, and if the price rises above that your instance terminates. Despite the unpredictability of price, these are still the most logical choice for this project.
 \subsection{Unexpected Terminations}
-As we are using spot instances, there is no gaurantee for availability or continued usage. Even once an instance has been acquired if the price of an instance rises above the user's set maximum, the instance will terminate. I had previously thought these terminates would be restricted to hourly condition checks, but experience has shown that they can occur at any time. This could be devastating to dedicated processes and applications, but in our case we can just relaunch the experiment if needed. It's important to note that Amazon bills by the hour, even if the full hour is not used.
+As we are using spot instances, there is no guarantee for availability or continued usage. Even once an instance has been acquired, if the price of an instance rises above the user's set maximum, the instance will terminate. I had previously thought these terminates would be restricted to hourly condition checks, but experience has shown that they can occur at any time. This could be devastating to dedicated processes and applications, but in our case we can just relaunch the experiment if needed. It's important to note that Amazon bills by the hour, even if the full hour is not used.
 \subsection{Experience with AWS}
-As this was the first time I had used the services provided by AWS, I'd like to provide a bit about my experience with them. I believe experienced and mid level developers should have no issues creating products with the APIs developed by Amazon. The documentation is thourough and readily available, and the forums are active with knowledgable moderators that communicate issues to the development teams at Amazon.
+As this was the first time I had used the services provided by AWS, I'd like to provide a bit about my experience with them. I believe experienced and mid-level developers should have no issues creating products with the APIs developed by Amazon. The documentation is thorough and readily available, and the forums are active with knowledgeable moderators that communicate issues to the development teams at Amazon.
 
 Speaking to the Java SDK specifically, the documentation is fairly complete, though some of the method inputs could be defined better. Many methods will take in strings, and you have to know the list of valid options. These are available in other documents provided by Amazon, but I wish they existed in the Javadoc as well.
 
@@ -62,11 +62,23 @@ The available methods are very comprehensive and logically named. Once you under
 \section{Approach}
 \subsection{Amazon Web Services JAVA API}
 Much of this project focused on implementing various functions to interact with  the AWS SDK for Java. These methods deal with the creation of instances, assigning tags to those instances, and configuration elastic load balancers. The wrapper I have developed has been created specifically with Elba RUBBoS experiments in mind. It allows for multiple experiments to run concurrently, and once they launch the experiments are not tied to application that launched them.
+The series of events are typically as follows:
+\begin{itemize}
+\item The names of instances are loaded into an array
+\item Spot instances are requested based on the number of elements in that array
+\item Those instances are tagged to identify both the name of the instance and name of the experiment.
+\item The API connects to each instance and writes the {\it /etc/hosts} file.
+\item Load balancers are created and configured
+\item The RUBBoS files are uploaded to the Control Server
+\item The files are configured to point towards the relevant load balancer
+\item The files are distributed to the other instances in the experiment
+\item The experiment begins on the Control Server
+\end{itemize}
 \subsection{Operating System Configuration}
 There were several changes that were required to create a system image that would be compatible with RUBBoS scripts. One of the largest problems was that Emulab has environmental variables that are required by scripts. This information includes the name of the node, and the name of the experiment being run. To emulate this I assign AWS tags to each EC2 instance. This information is accessible within each node by sending HTTP requests to a specific IP address\cite{metaDataRetr}.
 This information is retrieved upon boot and stored to files on the local hard drive. When a new shell is created these files are read and loaded into the relevant environmental variables.
 
-The next problem is the network routing. On emulab using the hostname of a node will correctly route you to that server. This information must be set manually on AWS during runtime. Using the AWS SDK for Java I am able to discover the names and private IP addresses of each instance and allows for the creation of a custom {\it/etc/hosts} file. This local DNS name resolution allows EC2 instances to behave in the same way as Emulab nodes.
+The next problem is the network routing. On Emulab using the hostname of a node will correctly route you to that server. This information must be set manually on AWS during runtime. Using the AWS SDK for Java I am able to discover the names and private IP addresses of each instance and allows for the creation of a custom {\it/etc/hosts} file. This local DNS name resolution allows EC2 instances to behave in the same way as Emulab nodes.
 \section{Challenges}
 \subsection{Cost}
 While I do not know how Emulab is funded, it is important to note that AWS does have fees associated with its services. EC2 instances charge per hour used, seen in Table \ref{ec2instancepricing}, and larger experiments could cost a significant amount. This problem is tempered by Spot instances, which can cost 1/10th of traditional instances, but this only minimizes costs.
@@ -99,23 +111,23 @@ Cluster Compute\linebreak Eight Extra Large & \$1.30 & \$0.297 (\$4060) & \$0.20
 \end{table}
 
 \subsection{Authentication}
-The authentication standards used by Amazon can be very rigorous. For most applications and services this is acceptable, and even preferred. Additional security is rarely a bad thing. My concern is that the fine grained control would be too burdensome for running a lab group. Individual key-pairs and multi-factor authentication tend to be used for logging in to the services. There very well may be an API for controlling this as well, but I'm afraid it would be tedious to set up dozens of credentials.
+The authentication standards used by Amazon can be very rigorous. For most applications and services this is acceptable, and even preferred. Additional security is rarely a bad thing. My concern is that the fine-grained control would be too burdensome for running a lab group. Individual key-pairs and multi-factor authentication tend to be used for logging in to the services. There very well may be an API for controlling this as well, but I'm afraid it would be tedious to set up dozens of credentials.
 
 Instances are typically assigned a single key-pair, that every member would have to share. I believe custom AMI's allow for custom key-pairs that would get around this restriction, but I can't say for sure.
 Finally, I do not know Amazon's policy about multiple individuals sharing an account, or the creation of groups. It very well may be against their Terms of Service. It is certainly something that would need to be researched, but was beyond the scope of my project.
 \section{Results}
-Overall, the results of this project were fairly good. The goal was to create an environment compatible with Emulab, and that suceeded. Due to the changes to create a custom AMI for EC2 instances, the relevant environmental variables that are required in RUBBoS scripts now exist to mirror Emulab.
+Overall, the results of this project were fairly good. The goal was to create an environment compatible with Emulab, and that succeeded. Due to the changes to create a custom AMI for EC2 instances, the relevant environmental variables that are required in RUBBoS scripts now exist to mirror Emulab.
 
-There is also progress on enabling a higher level of scalibility than Emulab allows. Message broadcasting for simultaneous configuration is already underway, and creation of instances based on the automated parsing of Elba configuration files is done. Performing load balancing on servers is greatly simplified thanks to AWS elastic load balancing, as compared to Emulab where you must manage your own load balancing server.
+There is also progress on enabling a higher level of scalability than Emulab allows. Message broadcasting for simultaneous configuration is already underway, and creation of instances based on the automated parsing of Elba configuration files is done. Performing load balancing on servers is greatly simplified thanks to AWS elastic load balancing, as compared to Emulab where you must manage your own load balancing server.
 \section{Future Development}
 \subsection{Scaling}
-As experiments scale, the sequential nature of server configuration in the scripts could cause signfinicant delays. To alleviate this problem, I propose a approach for simulataneously configuring all the servers. As learned from our distributed transaction processing lesson, it it best to break an algorithm into simpler components.
+As experiments scale, the sequential nature of server configuration in the scripts could cause significant delays. To alleviate this problem, I propose a approach for simultaneously configuring all the servers. As learned from our distributed transaction processing lesson, it it best to break an algorithm into simpler components.
 
 A service exists within AWS called the Simple Notification Service (SNS) that can help accomplish this goal. SNS allows messages to be pushed to a group of subscribed clients. By setting up a HTTP servlet on each EC2 instance messages can be broadcast to every instance in an experiment. For example, if an experiment happens to have 50 apache servers all requiring compilation and configuration, the sequential setup time is both lengthy and on AWS costly. With SNS the control server could broadcast these commands that should be identical to every apache instance at once.
 \subsection{Shared Drive}
 One thing that Emulab allows for that is not native to Amazon is a shared drive or folder. On Emulab a user is able to access their home directory from any node without any additional configuration. On AWS I am forced to upload data to a single instance copy it to the rest of the experiment. There are a few ways that this might be solved.
 
-Amazon S3 is a cloud storage service for storing files. A user could upload their files to S3, and each EC2 instance could download them quickly from within Amazon's network. The problem with this is that the system is primarily bulk read/write as opposed to an actual filesystem. One of the best options is to set up a seperate EC2 instance to run a Samba server or equivalent. This is the most native implementation for a Linux server, but has the negative of costing a monthly fee depending on what type of instance you are using, \$50 per month for the default instance type.
+Amazon S3 is a cloud storage service for storing files. A user could upload their files to S3, and each EC2 instance could download them quickly from within Amazon's network. The problem with this is that the system is primarily bulk read/write as opposed to an actual filesystem. One of the best options is to set up a separate EC2 instance to run a Samba server or equivalent. This is the most native implementation for a Linux server, but has the negative of costing a monthly fee depending on what type of instance you are using, \$50 per month for the default instance type.
 \subsection{Generic Configuration}
 While most of the AWSElbaAPI is generic, the parsing of experiment XML files and the commands run are specific to RUBBoS. Future development would either include a way for other developers to write custom parsers for their configurations, or inclusion of more parsers within the core app. As I have not looked at any other configuration files I do not know what level of effort this will require.
 \subsection{Management Application}
