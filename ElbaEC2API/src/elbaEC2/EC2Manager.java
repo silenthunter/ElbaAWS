@@ -66,6 +66,7 @@ public class EC2Manager
 	AmazonElasticLoadBalancingClient elb;
 	
 	String PEM_KEY = "C:\\Users\\Gdeter\\Documents\\ggkey.pem";
+	String AMI_NAME = "ami-f8128a91";
 	
 	/**
 	 * @brief Instantiates an EC2Manager object
@@ -126,8 +127,8 @@ public class EC2Manager
 		//Describe the type of instance to launch
 		LaunchSpecification launchSpecification = new LaunchSpecification();
 		launchSpecification.setSecurityGroups(securityGroups);
-		launchSpecification.setImageId("ami-f8128a91");
-		launchSpecification.setInstanceType(InstanceType.T1Micro);
+		launchSpecification.setImageId(AMI_NAME);
+		launchSpecification.setInstanceType(InstanceType.M1Small);
 		spotReq.setLaunchSpecification(launchSpecification);
 		
 		//Launch the instances
@@ -267,7 +268,7 @@ public class EC2Manager
 		{
 			for(Instance inst : rs.getInstances())
 			{
-				if(inst.getImageId().equals("ami-f8128a91") && inst.getState().getName().equals("running"))
+				if(inst.getImageId().equals(AMI_NAME) && inst.getState().getName().equals("running"))
 				{
 					ids.add(inst.getInstanceId());
 				}
@@ -324,7 +325,7 @@ public class EC2Manager
 			for(Instance inst : rs.getInstances())
 			{
 				//TODO: Remove AMI filter?
-				if(inst.getImageId().equals("ami-f8128a91") && inst.getState().getName().equals("running"))
+				if(inst.getImageId().equals(AMI_NAME) && inst.getState().getName().equals("running"))
 				{
 					String addr = inst.getPublicDnsName();
 					List<Tag> tags = inst.getTags();
@@ -414,7 +415,7 @@ public class EC2Manager
 		{
 			for(Instance inst : rs.getInstances())
 			{
-				if(inst.getImageId().equals("ami-f8128a91") && inst.getState().getName().equals("running"))
+				if(inst.getImageId().equals(AMI_NAME) && inst.getState().getName().equals("running"))
 				{
 					String addr = inst.getPublicDnsName();
 					List<Tag> tags = inst.getTags();
